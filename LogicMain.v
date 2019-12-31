@@ -8,11 +8,84 @@ Require Import QArith.
 Set Implicit Arguments.
 Set Maximal Implicit Insertion.
 
+Close Scope Q_scope.
+
+(* Utils *)
+
+Program Fixpoint s1_in_s2 {A} `{EqDec A eq} (s1 s2 : set A) :=
+  match s1 with
+    | [] => true
+    | a::t => set_mem equiv_dec a s2 && s1_in_s2 t s2
+  end.
+
+(* Calculates whether a set s is a subset of s2 *)
+
+(*Fixpoint subset {A} `{EqDec A eq} (s: set A) (s2 : set (set A)) :=
+  match s2 with
+  | [] => s1_in_s2 s []
+  | a::t => s1_in_s2 s a || subset s t
+  end.  *)
+
+Instance option_eqdec A `{EqDec A eq} : EqDec (option A) eq :=
+{
+  equiv_dec x y :=
+    match x, y with
+      | Some a, Some b => if a == b then in_left else in_right
+      | None, None => in_left
+      | Some _, None | None, Some _ => in_right
+    end
+ }.
+Proof.
+all:congruence.
+Qed.
+
+Fixpoint set_eq {A} `{EqDec A eq} (s1 s2 : set A) :=
+  if (length s1 == length s2) then
+      if (s1_in_s2 s1 s2) then
+          if (s1_in_s2 s2 s1) then true else false
+      else false
+  else false.
+
+Lemma set_eq_sound {A} `{EqDec A eq} : forall s1 : set A, forall s2 : set A,
+   set_eq s1 s2 = true <-> ((length s1 = length s2))
+   /\ s1_in_s2 s1 s2 = true /\ s1_in_s2 s2 s1 = true.
+  Proof.
+  split.
+  - intros. destruct s1. destruct s2.
+  + split. reflexivity. split. assumption. assumption.
+  + inversion H0.
+  + unfold set_eq in H0. destruct equiv_dec in H0.
+    case_eq (s1_in_s2 (a :: s1) s2). case_eq (s1_in_s2 s2 (a :: s1)). intros. rewrite H1 in H0. rewrite H2 in H0. inversion e.
+    split. reflexivity. auto. intros. rewrite H2 in H0. rewrite H1 in H0. inversion H0. intros. 
+    rewrite H1 in H0. inversion H0. congruence. 
+  - intros. destruct s1. destruct s2.
+  + reflexivity.
+  + destruct H0. inversion H0.
+  + simpl. destruct H0. destruct H1. simpl in H0. rewrite H0.
+    simpl s1_in_s2 in H1. rewrite H1. rewrite H2. repeat simpl. destruct equiv_dec. reflexivity. congruence.
+  Defined.
+
+Instance set_eqdec {A} `(eqa : EqDec A eq) : EqDec (set A) eq :=
+  { equiv_dec :=
+    fix rec (x y : set A) :=
+    match x, y with
+      | nil, nil => in_left
+      | cons hd tl, cons hd' tl' =>
+        if hd == hd' then
+          if rec tl tl' then in_left else in_right
+          else in_right
+      | _, _ => in_right
+    end }.
+Proof.
+all:congruence.
+Defined.
+
+
 Module ReoLogicCoq.
   Section ReoLogicCoq.
 
   Variable name state data: Type.
-  Context `{EqDec name eq}.
+  Context `{EqDec name eq} `{EqDec data eq}.
 
   Inductive connector :=
   | sync : name -> name -> connector
@@ -24,7 +97,6 @@ Module ReoLogicCoq.
   | replicator : name -> name -> name -> connector. (*composite operation. Stands for \odot from the logic's language *)
 (*   | composite : connector -> connector -> connector. (*isso aqui me da uma espêcie de "árvore". Pode complicar a noção  *)
                                                        de processamento sequencial que a gente ve em g*)
-Check sync.
 
   Open Scope Q_scope.
   (*Frame definition *)
@@ -39,8 +111,8 @@ Check sync.
 
   (* Model definition *)
   Record model := mkmodel {
-    f  : frame;
-    v : state -> set Prop (*Erick: em um primeiro momento, prop. Mas imagino que tenhamos
+    Fr  : frame;
+    V : state -> set Prop (*Erick: em um primeiro momento, prop. Mas imagino que tenhamos
                           um tipo indutivo que define nossa linguagem*)
   }.
 
@@ -61,6 +133,21 @@ Check sync.
     (*| mer : name -> name -> name -> program (* merger *)
     | rep : name -> name -> name -> program. (* replicator *) me parecem desnecessários.*)
 
+  Instance program_eqdec `{EqDec name eq} : EqDec program eq :=
+  { equiv_dec x y :=
+    match x, y with
+      | to a b, to c d  | asyncTo a b, asyncTo c d  | fifoAlt a b, fifoAlt c d 
+      | SBlock a b, SBlock c d  | ABlock a b, ABlock c d => 
+        if a == c then 
+          if b == d then in_left 
+          else in_right
+        else in_right
+      | _, _ => in_right
+    end
+    }.
+  Proof.
+  all:congruence.
+  Defined.
   (* We define the function which coordinates the flow on the Reo program *)
 
   Fixpoint g (pi: list connector) (s : list program) : list program := (*alternativamente : set program sem o construtor composite *)
@@ -90,10 +177,38 @@ Check sync.
     | fifoData : name -> data -> name -> dataConnector
     | dataPorts : name -> data -> dataConnector.
 
+  Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec dataConnector eq :=
+  {
+  equiv_dec x y :=
+    match x, y with
+      | dataPorts a b, dataPorts c d => if a == c then 
+                                          if b == d then in_left 
+                                          else in_right
+                                        else in_right
+      | fifoData a b c, fifoData d e f => if a == d then 
+                                            if b == e then 
+                                              if c == f then in_left 
+                                              else in_right
+                                            else in_right
+                                      else in_right
+      | _, _ => in_right
+    end
+    }.
+  Proof.
+  all:congruence.
+  Defined.
 
-  Eval compute in (existsb (fun x : (name * data) => match x with
-                                        | (x,y) => true
-                                        end)).
+  Fixpoint dInSetDataConnector (data: dataConnector) (s: set dataConnector) :=
+    match s with 
+    | [] => false
+    | a::t => if data == a then true else dInSetDataConnector data t
+    end.
+
+  Fixpoint subset (s: set dataConnector) (s2 : (set dataConnector)) :=
+    match s with
+    | [] => true
+    | a::t => dInSetDataConnector a s2 && subset t s2
+    end.
 
 
   (* Auxiliary function for goTo a b and dataPorts a x -> dataPorts b x *)
@@ -193,9 +308,36 @@ Check sync.
   (* of Reo subprograms which have only one source node and this node is somehow a source node directly connected to the (a)syncDrain *)
   (* which condition has failed                                                                                                       *)
 
-  Fixpoint halt (a b : name) (s' : set program) := s'.
+  (* halt'' filters programs that has its sink node the port name given as parameter  *)
+  Definition halt'' (a: name)  (s': set program) :=
+  (filter (fun x : (program) => match x with 
+                                        | to name1 name2 => (equiv_decb name1 a)
+                                        | asyncTo name1 name2 => (equiv_decb name1 a)
+                                        | fifoAlt name1 name2 => (equiv_decb name1 a)
+                                        | SBlock name1 name2 => (equiv_decb name1 a)
+                                        | ABlock name1 name2 => (equiv_decb name1 a)
+                                        end) (s')).
 
-  Close Scope Q_scope.
+  (* s': programa a ser iterado *)
+  (* s'' : próximos programas a serem removidos *)
+  Fixpoint halt' (a : name) (s' : set program) (s'': set program) :=
+    match (s'') with
+    | [] => s'
+    | ax::st => set_remove equiv_dec (ax) (s')++halt' a s' st
+    end.
+
+  Definition haltAux' (a b : name) (s' : set program) :=
+    halt' a s' (halt'' a s') ++ halt' b s' (halt'' b s').
+
+  Fixpoint haltAux (a b: name) (s' : set program) (k: nat) : set program := 
+    match k with
+    | 0 => haltAux' a b s'
+    | Datatypes.S n => haltAux' a b s'
+    (* TODO redefinir isso como um fix e iterar, modificando as portas passadas para *)
+    (* haltAux' *)
+    end.
+
+  Definition halt (a b: name) (s': set program) := haltAux a b s' (length s').
 
   Fixpoint go (t : set dataConnector) (s: set program) (k: nat) (acc : set goMarks) : set dataConnector := 
     (*obs1: a manipulação de s no caso dos blocks vai dar problema 
@@ -294,11 +436,26 @@ Check sync.
                                             (go t s' n acc)
                                           else
                                             (go t (halt a b s') n acc)
-                                            
                          end
             end
     end.
   
+  (* We define f as the top-level function to be used as follows *)
+  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := go t (g pi []) (length pi) [].
+
+  (* We define the computation of iterations bounded by repetition as follows. *)
+
+  Definition boundedIteration : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
+    set (set dataConnector) -> set (set dataConnector)  :=
+    fix rec t pi iterations (*acc*) resp :=
+      match iterations with
+      | 0 => [last resp t]
+      | Datatypes.S n => if existsb (subset t) resp
+                         then ([last resp t]) 
+                         else (rec (f t pi) pi n (resp ++ [t]))
+                          (*set_add equiv_dec t resp)*)
+      end.
+
   End ReoLogicCoq.
 End ReoLogicCoq.
 

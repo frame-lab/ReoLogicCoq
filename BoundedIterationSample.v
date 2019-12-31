@@ -60,15 +60,10 @@ Instance sequencerPortsEq : EqDec sequencerPorts eq :=
   all:congruence.
   Defined.
 
-Definition program1 := [ReoLogicCoq.sync A B; ReoLogicCoq.sync B E; ReoLogicCoq.sync B C; ReoLogicCoq.sync C D; ReoLogicCoq.sync D A].
-Definition processed1 := ReoLogicCoq.g program1 [].
+Definition program1 := [ReoLogicCoq.sync A B; ReoLogicCoq.sync B C; ReoLogicCoq.sync C D; ReoLogicCoq.sync D A].
 
-Eval compute in processed1.
+Definition data1 := [ReoLogicCoq.dataPorts A 1].
 
-Eval compute in length processed1.
-
-Definition data1 := [ReoLogicCoq.dataPorts B 1].
-
-Eval compute in ReoLogicCoq.go data1 processed1 (length processed1) [].
-
-Eval compute in ReoLogicCoq.fire data1 [ReoLogicCoq.goTo nat B E].
+(*Yields D as the port with data item 1, which is the state of the circuit *)
+(* which is the connector's state right before the first repetition        *)
+Eval compute in ReoLogicCoq.boundedIteration data1 program1 (length program1) [].
