@@ -85,7 +85,7 @@ Module ReoLogicCoq.
   Section ReoLogicCoq.
 
   Variable name state data: Type.
-  Context `{EqDec name eq} `{EqDec data eq}.
+  Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
 
   Inductive connector :=
   | sync : name -> name -> connector
@@ -98,13 +98,26 @@ Module ReoLogicCoq.
 (*   | composite : connector -> connector -> connector. (*isso aqui me da uma espêcie de "árvore". Pode complicar a noção  *)
                                                        de processamento sequencial que a gente ve em g*)
 
+  (* We define a type which denotes the ports to fire and their respective data *)
+  Inductive goMarks :=
+    | goTo : name -> name -> goMarks
+    | goFifo : name -> data -> name -> goMarks  (*entra no fifo: axb*)
+    | goFromFifo : name -> data -> name -> goMarks. (*sai do fifo : axb->b --- preciso guardar essas referências?*) 
+
+  (* We define an inductive type for the data that effectively denote the flow of a 
+   circuit: either there are data items on some port names or a data item within a
+   buffer *)
+  Inductive dataConnector :=
+    | fifoData : name -> data -> name -> dataConnector
+    | dataPorts : name -> data -> dataConnector.
+
   Open Scope Q_scope.
   (*Frame definition *)
   Record frame := mkframe {
     S : set state;
     R : set (state * state);
     lambda : state -> name -> QArith_base.Q;
-    delta : state -> set name
+    delta : state -> set dataConnector
   }.
 
   Close Scope Q_scope.
@@ -112,8 +125,7 @@ Module ReoLogicCoq.
   (* Model definition *)
   Record model := mkmodel {
     Fr  : frame;
-    V : state -> set Prop (*Erick: em um primeiro momento, prop. Mas imagino que tenhamos
-                          um tipo indutivo que define nossa linguagem*)
+    V : state -> Prop -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
   }.
 
   (* Parsing of a Reo program \pi *)
@@ -123,8 +135,6 @@ Module ReoLogicCoq.
 
 
   Inductive program :=
-    (*| empty : program -> 15/12 - faz sentido ter empty? digo, considerando o progrmaa como set program e nao como program,
-        pra mim não faz sentido *)
     | to : name -> name -> program (* sync *)
     | asyncTo : name -> name -> program (* LossySync : v0 era name ->  name -> name. não vejo necessidade disso *)
     | fifoAlt : name -> name -> program (* fifo *)
@@ -163,19 +173,6 @@ Module ReoLogicCoq.
               | replicator a b c => (g(t) (s ++ [(to a b); (to a c)])) (*s ++ [(rep a b c)]*)
               end
     end.
-
-  (* We define a type which denotes the ports to fire and their respective data *)
-  Inductive goMarks :=
-    | goTo : name -> name -> goMarks
-    | goFifo : name -> data -> name -> goMarks  (*entra no fifo: axb*)
-    | goFromFifo : name -> data -> name -> goMarks. (*sai do fifo : axb->b --- preciso guardar essas referências?*) 
-
-  (* We define an inductive type for the data that effectively denote the flow of a 
-   circuit: either there are data items on some port names or a data item within a
-   buffer *)
-  Inductive dataConnector :=
-    | fifoData : name -> data -> name -> dataConnector
-    | dataPorts : name -> data -> dataConnector.
 
   Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec dataConnector eq :=
   {
@@ -318,8 +315,8 @@ Module ReoLogicCoq.
                                         | ABlock name1 name2 => (equiv_decb name1 a)
                                         end) (s')).
 
-  (* s': programa a ser iterado *)
-  (* s'' : próximos programas a serem removidos *)
+  (* s': program to be iterated *)
+  (* s'' : programs to be removed (given the nonsatisfied blocks) *)
   Fixpoint halt' (a : name) (s' : set program) (s'': set program) :=
     match (s'') with
     | [] => s'
@@ -455,6 +452,217 @@ Module ReoLogicCoq.
                          else (rec (f t pi) pi n (resp ++ [t]))
                           (*set_add equiv_dec t resp)*)
       end.
+
+  (** Syntatic definitions **)
+  (* We formalize syntatic programs as pi and its operators *)
+  (* sProgram stands for simple program *)
+
+  Inductive syntaticProgram :=
+  | sProgram : set connector -> syntaticProgram
+  | nu : set connector -> syntaticProgram
+  | star : set connector -> syntaticProgram.
+
+  Notation "# pi" := (sProgram pi) (no associativity, at level 69).
+  Notation "nu. pi" := (nu pi) (no associativity, at level 69).
+  Notation "pi *" := (star pi) (no associativity, at level 69).
+
+  (* We formalize the notion of modalities *)
+
+  Inductive atomicFormula :=
+  | proposition : Prop -> atomicFormula
+  | box : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula
+  | diamond : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula.
+  (*erick: 05/02 - não sei se prop aqui fica adequado p fórmulas \psi e \varphi.
+    coloquei bool como um primeiro exemplo. O problema de prop é permitir
+    variáveis nas fórmulas, o que leva a lógica a ser não proposicional. *)
+
+  Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
+  Notation " [ t , pi ]" := (box t pi) (no associativity, at level 69).
+
+  (* We define our logic's syntax formulae based on classic modal logic's connectives *)
+  Inductive formula :=
+  | atomic : atomicFormula -> formula
+  | and : formula -> formula -> formula
+  | or : formula -> formula -> formula
+  | neg : formula -> formula
+  | impl : formula -> formula -> formula
+  | biImpl : formula -> formula -> formula.
+  (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
+
+  Variable pi : syntaticProgram.
+  Variable t : set dataConnector.
+
+  Search "< _ , _ >".
+  Check pi = pi.
+
+  Check and (atomic(diamond t pi (box t pi (proposition True))))
+            (atomic([ t, pi ] (diamond t pi (proposition True)))).
+
+  Check [ t, pi ] (diamond t pi (proposition False)).
+
+
+
+  Fixpoint getData (portsData : set dataConnector) (portName : name) (portData : data) : bool :=
+    match portsData with 
+    | a::t => match a with
+              | dataPorts name data => equiv_decb data portData
+              | _ => getData t portName portData
+              end
+    | _ => false
+    end.
+
+  (* We retrieve all states of the model which is related to a state v by R*)
+  (* Pode ser usado tanto p R quanto p R_\pi. o que varia é o setStates*)
+  Fixpoint retrieveRelatedStatesFromV (setStates : set (state * state)) (s : state) 
+    : set state :=
+    match setStates with 
+    | nil => nil
+    | a::states => if s == (fst a) then (snd a)::(retrieveRelatedStatesFromV states s) 
+                   else retrieveRelatedStatesFromV states s
+    end.
+
+  Variable m: model.
+  Check delta(Fr(m)).
+
+  (* We retrieve the verification's initial state based on the data flow t*)
+  Fixpoint getInitialStateAux (m:model) (states : set state) (t: set dataConnector) :=
+    match states with
+    | nil => nil (*erick: posso ter mais de um estado inicial?*)
+    | st::states' => if (subset t (delta(Fr m) st)) then st::getInitialStateAux m states' t
+                     else getInitialStateAux m states' t
+    end.
+
+  Definition getState (m: model) (t: set dataConnector) : set state :=
+    getInitialStateAux m (S(Fr(m))) t.
+
+  (*We define RTC for R*)
+  Fixpoint getReflexiveAux (states : set state) : set (state * state) :=
+    match states with
+    | nil => nil
+    | a::states' => (a,a)::getReflexiveAux states'
+    end.
+
+  Definition getReflexive (m: model) : set (state * state) := set_union equiv_dec (R(Fr(m))) 
+                                                  (getReflexiveAux (S(Fr(m)))).
+
+
+  (*Creates pairs of states (s,a). Will be employed in the Reflexive closure calculation *)
+  Fixpoint createNewPair (s : state) (setPairStates : set (state)) :=
+    match setPairStates with
+    | nil => nil
+    | a::relStates => (s,a)::createNewPair s relStates
+    end. 
+
+  (* retrieve the states w where s R_\pi w *)
+  Fixpoint getTransitiveAux' (s : state) (relR: set (state * state)) :=
+    match relR with
+    | nil => nil
+    | a::relStates => if s == fst(a) then snd(a)::getTransitiveAux' s relStates
+                      else getTransitiveAux' s relStates
+    end.
+
+  Fixpoint getTransitiveAux (relR : set (state * state)) (sRelw: state * state) : set (state * state) :=
+    (* obs: talvez seja necessário uma cópia de relR como a R original (sem ser a que será destruída pela função.*)
+    match relR with
+    | nil => nil
+    | a::relStates => set_union equiv_dec (createNewPair (fst(a)) 
+                                (getTransitiveAux' (snd(a)) relR)) (getTransitiveAux relStates sRelw)
+    end.
+
+  Definition getTransitive (m : model) := flat_map (getTransitiveAux (R(Fr(m)))) (R(Fr(m))).
+
+  (* TODO: corrigir. só ta pegando um nível de transitividade. *)
+  Definition RTC (m:model) : set (state * state) :=
+   set_union equiv_dec (R(Fr(m))) ((getTransitive m) ++ (getReflexive m)).
+
+
+  (* The notion of diamond and box satisfaction is defined as follows (for a single modality) *)
+
+
+  Definition diamondSatisfactionPi (m:model)(p : Prop) 
+    (states : set state) :=
+    existsb (fun x : state => (V(m)x p)) states
+            (*retrieveRelatedStatesFromV (R(Fr(m))) s*). 
+
+  Definition boxSatisfactionPi (m:model) (*s:state*) (p : Prop) 
+    (states: set state) :=
+    forallb (fun x : state => (V(m)x p)) states
+            (*retrieveRelatedStatesFromV (R(Fr(m))) s*). 
+
+  Notation "x |> f" := (f x) (at level 79, no associativity).
+
+  (* As we have the state, we need to verify whether it is valid in the model. *)
+
+  Fixpoint singleModelStep (m:model) (formula: atomicFormula) (s:state) :=
+    match formula with
+    | proposition p => (V(m) s p)
+    | box t pi p' => match pi with
+                  | sProgram reo => match p' with
+                                   | proposition p'' => 
+                                       boxSatisfactionPi (m) (p'')
+                                       (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   end
+                  | star reo => match p' with
+                                   | proposition p'' => 
+                                       boxSatisfactionPi (m) (p'')
+                                       (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (RTC(m)) s)
+                                 end
+                  (* TODO adaptar p nu.pi*)
+                  | nu reo => false
+                     end
+    | diamond t pi p' => match pi with
+                  | sProgram reo => match p' with
+                                   | proposition p'' => 
+                                       diamondSatisfactionPi (m) (p'')
+                                       (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   end
+                  | star reo => match p' with
+                                   | proposition p'' => 
+                                       diamondSatisfactionPi (m) (p'')
+                                       (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                          (retrieveRelatedStatesFromV (RTC(m)) s)
+                                 end
+                  (* TODO adaptar p nu.pi*)
+                  | nu reo => false
+                  end
+      end.
+
+
+
+  (* The evaluation of an atomic formula is done as follows *)
+
+  Definition singleFormulaVerify (m : model) (p : atomicFormula) 
+    (t: set dataConnector) : bool :=
+    (forallb (fun x => true) (map (singleModelStep m p) (getState m t))).
+
+  (* Then we evaluate composite formulae *)
+  Fixpoint evaluateFormulas (phi : formula) (t: set dataConnector):=
+    match phi with
+    | atomic p => singleFormulaVerify m p t
+    | and a b => evaluateFormulas a t && evaluateFormulas b t
+    | or a b => evaluateFormulas a t || evaluateFormulas b t
+    | neg a => negb (evaluateFormulas a t)
+    | impl a b => (negb (evaluateFormulas a t)) || (evaluateFormulas b t)
+    | biImpl a b => ((negb (evaluateFormulas a t)) || (evaluateFormulas b t)) && 
+                    ((negb (evaluateFormulas b t)) || (evaluateFormulas a t))
+    end.
+
+
 
   End ReoLogicCoq.
 End ReoLogicCoq.
