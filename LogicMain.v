@@ -18,14 +18,6 @@ Program Fixpoint s1_in_s2 {A} `{EqDec A eq} (s1 s2 : set A) :=
     | a::t => set_mem equiv_dec a s2 && s1_in_s2 t s2
   end.
 
-(* Calculates whether a set s is a subset of s2 *)
-
-(*Fixpoint subset {A} `{EqDec A eq} (s: set A) (s2 : set (set A)) :=
-  match s2 with
-  | [] => s1_in_s2 s []
-  | a::t => s1_in_s2 s a || subset s t
-  end.  *)
-
 Instance option_eqdec A `{EqDec A eq} : EqDec (option A) eq :=
 {
   equiv_dec x y :=
@@ -126,12 +118,14 @@ Module ReoLogicCoq.
   Record model := mkmodel {
     Fr  : frame;
     V : state -> Prop -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
+                              (*Erick : por questões operacionais (i.e., o que exatemnte é um pattern em cima de Prop)
+                                Acho que devemos criar uma gramática p falar de proposições.*)
   }.
 
   (* Parsing of a Reo program \pi *)
 
   (* We define an inductive type for the conversion of a reo Connector to a Reo
-     program by means of the g function *)
+     program by means of *parse* function *)
 
 
   Inductive program :=
@@ -140,8 +134,6 @@ Module ReoLogicCoq.
     | fifoAlt : name -> name -> program (* fifo *)
     | SBlock : name -> name -> program (* syncDrain *)
     | ABlock : name -> name -> program.  (* asyncDrain *)
-    (*| mer : name -> name -> name -> program (* merger *)
-    | rep : name -> name -> name -> program. (* replicator *) me parecem desnecessários.*)
 
   Instance program_eqdec `{EqDec name eq} : EqDec program eq :=
   { equiv_dec x y :=
@@ -160,17 +152,17 @@ Module ReoLogicCoq.
   Defined.
   (* We define the function which coordinates the flow on the Reo program *)
 
-  Fixpoint g (pi: list connector) (s : list program) : list program := (*alternativamente : set program sem o construtor composite *)
+  Fixpoint parse (pi: list connector) (s : list program) : list program := (*alternativamente : set program sem o construtor composite *)
     match pi with
     | [] => s
     | a::t => match a with
-              | sync a b => (g(t) (s ++ [to a b]))
-              | lossySync a b => (g(t) (s ++ [asyncTo a b]))
-              | fifo a b => (g t s) ++ [fifoAlt a b]
-              | syncDrain a b => (g(t) ([(SBlock a b)] ++ s))
-              | asyncDrain a b => (g(t) [(ABlock a b)] ++ s)
-              | merger a b c => (g(t) (s ++ [(to a c); (to b c)])) (* s ++ [(mer a b c)] *)
-              | replicator a b c => (g(t) (s ++ [(to a b); (to a c)])) (*s ++ [(rep a b c)]*)
+              | sync a b => (parse(t) (s ++ [to a b]))
+              | lossySync a b => (parse(t) (s ++ [asyncTo a b]))
+              | fifo a b => (parse t s) ++ [fifoAlt a b]
+              | syncDrain a b => (parse(t) ([(SBlock a b)] ++ s))
+              | asyncDrain a b => (parse(t) [(ABlock a b)] ++ s)
+              | merger a b c => (parse(t) (s ++ [(to a c); (to b c)])) (* s ++ [(mer a b c)] *)
+              | replicator a b c => (parse(t) (s ++ [(to a b); (to a c)])) (*s ++ [(rep a b c)]*)
               end
     end.
 
@@ -438,17 +430,18 @@ Module ReoLogicCoq.
     end.
   
   (* We define f as the top-level function to be used as follows *)
-  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := go t (g pi []) (length pi) [].
+  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := go t (parse pi []) (length pi) [].
 
   (* We define the computation of iterations bounded by repetition as follows. *)
+  (* It returns the data flow of the connector which immediately preceeds a flow which have already happened.*)
 
   Definition boundedIteration : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
-    set (set dataConnector) -> set (set dataConnector)  :=
+    set (set dataConnector) -> (*set*) (set dataConnector)  :=
     fix rec t pi iterations (*acc*) resp :=
       match iterations with
-      | 0 => [last resp t]
+      | 0 => last resp t (*as of 02-05-20, toda ocorrencia de last resp t era [last resp t] *)
       | Datatypes.S n => if existsb (subset t) resp
-                         then ([last resp t]) 
+                         then (last resp t) 
                          else (rec (f t pi) pi n (resp ++ [t]))
                           (*set_add equiv_dec t resp)*)
       end.
@@ -472,9 +465,6 @@ Module ReoLogicCoq.
   | proposition : Prop -> atomicFormula
   | box : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula
   | diamond : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula.
-  (*erick: 05/02 - não sei se prop aqui fica adequado p fórmulas \psi e \varphi.
-    coloquei bool como um primeiro exemplo. O problema de prop é permitir
-    variáveis nas fórmulas, o que leva a lógica a ser não proposicional. *)
 
   Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
   Notation " [ t , pi ]" := (box t pi) (no associativity, at level 69).
@@ -492,16 +482,6 @@ Module ReoLogicCoq.
   Variable pi : syntaticProgram.
   Variable t : set dataConnector.
 
-  Search "< _ , _ >".
-  Check pi = pi.
-
-  Check and (atomic(diamond t pi (box t pi (proposition True))))
-            (atomic([ t, pi ] (diamond t pi (proposition True)))).
-
-  Check [ t, pi ] (diamond t pi (proposition False)).
-
-
-
   Fixpoint getData (portsData : set dataConnector) (portName : name) (portData : data) : bool :=
     match portsData with 
     | a::t => match a with
@@ -512,7 +492,6 @@ Module ReoLogicCoq.
     end.
 
   (* We retrieve all states of the model which is related to a state v by R*)
-  (* Pode ser usado tanto p R quanto p R_\pi. o que varia é o setStates*)
   Fixpoint retrieveRelatedStatesFromV (setStates : set (state * state)) (s : state) 
     : set state :=
     match setStates with 
@@ -521,8 +500,6 @@ Module ReoLogicCoq.
                    else retrieveRelatedStatesFromV states s
     end.
 
-  Variable m: model.
-  Check delta(Fr(m)).
 
   (* We retrieve the verification's initial state based on the data flow t*)
   Fixpoint getInitialStateAux (m:model) (states : set state) (t: set dataConnector) :=
@@ -554,30 +531,41 @@ Module ReoLogicCoq.
     end. 
 
   (* retrieve the states w where s R_\pi w *)
-  Fixpoint getTransitiveAux' (s : state) (relR: set (state * state)) :=
+  Fixpoint getNeighbors (s : state) (relR: set (state * state)) : set state :=
     match relR with
     | nil => nil
-    | a::relStates => if s == fst(a) then snd(a)::getTransitiveAux' s relStates
-                      else getTransitiveAux' s relStates
+    | a::relStates => if s == fst(a) then snd(a)::getNeighbors s relStates
+                      else getNeighbors s relStates
     end.
 
-  Fixpoint getTransitiveAux (relR : set (state * state)) (sRelw: state * state) : set (state * state) :=
-    (* obs: talvez seja necessário uma cópia de relR como a R original (sem ser a que será destruída pela função.*)
-    match relR with
+  Fixpoint getTransitiveAux' (relR : set (state * state)) (n:nat) (a:state) : set (state) :=
+    match n with
+    | 0 => nil
+    | Datatypes.S m => set_union equiv_dec (getNeighbors a relR) 
+                        (flat_map (getTransitiveAux' relR m)(getNeighbors a relR))
+    end.
+
+  (*TODO falta criar o par (a,states) com o a passado como parametro p função acima + estados obtidos na função abaixo. *)
+  Fixpoint getTransitiveAux (S: set state) (relR : set (state * state)) : set (state * state) :=
+    match S with
     | nil => nil
-    | a::relStates => set_union equiv_dec (createNewPair (fst(a)) 
-                                (getTransitiveAux' (snd(a)) relR)) (getTransitiveAux relStates sRelw)
-    end.
+    | state::otherStates => set_union equiv_dec (createNewPair state (getTransitiveAux' relR (length relR) state)) (getTransitiveAux otherStates relR)
+    end. 
 
-  Definition getTransitive (m : model) := flat_map (getTransitiveAux (R(Fr(m)))) (R(Fr(m))).
+  Definition getTransitive (m : model) := (*flat_map (getTransitiveAux' (R(Fr(m))) (length (R(Fr(m))))) (S(Fr(m))).*)
+    getTransitiveAux (S(Fr(m))) (R(Fr(m))). 
 
   (* TODO: corrigir. só ta pegando um nível de transitividade. *)
   Definition RTC (m:model) : set (state * state) :=
-   set_union equiv_dec (R(Fr(m))) ((getTransitive m) ++ (getReflexive m)).
+   set_union equiv_dec (R(Fr(m))) ((*getTransitive m) ++*) (getReflexive m)).
+
+  (*We recover the states reached by means of \nu.pi *)
+
+  Definition getNuPiReachedState (m:model) (t: set dataConnector) (reoConnector: set connector) :=
+    getState (m) (boundedIteration t reoConnector (length reoConnector) []).
 
 
   (* The notion of diamond and box satisfaction is defined as follows (for a single modality) *)
-
 
   Definition diamondSatisfactionPi (m:model)(p : Prop) 
     (states : set state) :=
@@ -615,8 +603,18 @@ Module ReoLogicCoq.
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
                                  end
-                  (* TODO adaptar p nu.pi*)
-                  | nu reo => false
+                  (* TODO testar p nu.pi*)
+                  | nu reo => match p' with
+                                   | proposition p'' => 
+                                       boxSatisfactionPi (m) (p'')
+                                       (getNuPiReachedState m t reo)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                         (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
+                                                    (getNuPiReachedState m t reo))
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                         (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
+                                                    (getNuPiReachedState m t reo))
+                                 end
                      end
     | diamond t pi p' => match pi with
                   | sProgram reo => match p' with
@@ -637,8 +635,18 @@ Module ReoLogicCoq.
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
                                  end
-                  (* TODO adaptar p nu.pi*)
-                  | nu reo => false
+                  (* TODO testar p nu.pi*)
+                  | nu reo => match p' with
+                                   | proposition p'' => 
+                                       diamondSatisfactionPi (m) (p'')
+                                       (getNuPiReachedState m t reo)
+                                   | box t' pi' p'' => forallb (singleModelStep m p')
+                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
+                                                    (getNuPiReachedState m t reo))
+                                   | diamond t' pi' p'' => existsb (singleModelStep m p')
+                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
+                                                    (getNuPiReachedState m t reo))
+                                   end
                   end
       end.
 
@@ -650,19 +658,18 @@ Module ReoLogicCoq.
     (t: set dataConnector) : bool :=
     (forallb (fun x => true) (map (singleModelStep m p) (getState m t))).
 
+
   (* Then we evaluate composite formulae *)
-  Fixpoint evaluateFormulas (phi : formula) (t: set dataConnector):=
+  Fixpoint evaluateFormulas (m:model) (phi : formula) (t: set dataConnector):=
     match phi with
     | atomic p => singleFormulaVerify m p t
-    | and a b => evaluateFormulas a t && evaluateFormulas b t
-    | or a b => evaluateFormulas a t || evaluateFormulas b t
-    | neg a => negb (evaluateFormulas a t)
-    | impl a b => (negb (evaluateFormulas a t)) || (evaluateFormulas b t)
-    | biImpl a b => ((negb (evaluateFormulas a t)) || (evaluateFormulas b t)) && 
-                    ((negb (evaluateFormulas b t)) || (evaluateFormulas a t))
+    | and a b => evaluateFormulas m a t && evaluateFormulas m b t
+    | or a b => evaluateFormulas m a t || evaluateFormulas m b t
+    | neg a => negb (evaluateFormulas m a t)
+    | impl a b => (negb (evaluateFormulas m a t)) || (evaluateFormulas m b t)
+    | biImpl a b => ((negb (evaluateFormulas m a t)) || (evaluateFormulas m b t)) && 
+                    ((negb (evaluateFormulas m b t)) || (evaluateFormulas m a t))
     end.
-
-
 
   End ReoLogicCoq.
 End ReoLogicCoq.

@@ -61,7 +61,7 @@ Instance sequencerPortsEq : EqDec sequencerPorts eq :=
   Defined.
 
 Definition program1 := [ReoLogicCoq.sync A B; ReoLogicCoq.sync B E; ReoLogicCoq.sync B C; ReoLogicCoq.sync C D; ReoLogicCoq.sync D A].
-Definition processed1 := ReoLogicCoq.g program1 [].
+Definition processed1 := ReoLogicCoq.parse program1 [].
 
 Eval compute in processed1.
 
@@ -225,7 +225,10 @@ Definition frame1 := ReoLogicCoq.mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF
                     [(DD,D_DFIFOE);(D_DFIFOE,DE);(DE,DA);(DE,D_EFIFOF);(D_EFIFOF,DF);(DF,DB);(DF,D_FFIFOG);
                       (D_FFIFOG,DG);(DG,DD)] lambdaTest deltaSequencer.
 
-Definition valuationTest (s: statesSequencer) (p : Prop) := false.
+Definition valuationTest (s: statesSequencer) (p : Prop) := true.
+
+Eval compute in valuationTest DA (1 = 2).
+
 
 Definition model1 := ReoLogicCoq.mkmodel frame1 valuationTest.
 
@@ -233,13 +236,24 @@ Definition pi := ReoLogicCoq.sProgram SequencerProgram.
 
 Definition t := [ReoLogicCoq.dataPorts D 1].
 
+Check ReoLogicCoq.singleFormulaVerify.
 
-Eval compute in ReoLogicCoq.singleFormulaVerify model1 
+Eval compute in ReoLogicCoq.singleFormulaVerify model1
 ( ReoLogicCoq.box t pi (ReoLogicCoq.diamond t pi 
     (ReoLogicCoq.proposition sequencerPorts nat True))) t.
 
 Eval compute in ReoLogicCoq.singleFormulaVerify model1 
 ( ReoLogicCoq.box t pi (ReoLogicCoq.proposition sequencerPorts nat True)) t.
 
+Definition a : Prop := 1 = 2.
+
+Definition b : Prop := 3 = 4.
+
+Eval compute in eq a b.
+
 Eval compute in ReoLogicCoq.RTC model1.
 
+Eval compute in ReoLogicCoq.getTransitive model1.
+
+Eval compute in ReoLogicCoq.getTransitiveAux' (ReoLogicCoq.R(ReoLogicCoq.Fr(model1)))
+69 DD.
