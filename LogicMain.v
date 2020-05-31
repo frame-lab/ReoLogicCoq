@@ -73,7 +73,7 @@ all:congruence.
 Defined.
 
 
-Module ReoLogicCoq.
+(*Module ReoLogicCoq.*)
   Section ReoLogicCoq.
 
   Variable name state data: Type.
@@ -86,9 +86,7 @@ Module ReoLogicCoq.
   | syncDrain : name -> name -> connector
   | asyncDrain : name -> name -> connector
   | merger : name -> name -> name -> connector
-  | replicator : name -> name -> name -> connector. (*composite operation. Stands for \odot from the logic's language *)
-(*   | composite : connector -> connector -> connector. (*isso aqui me da uma espêcie de "árvore". Pode complicar a noção  *)
-                                                       de processamento sequencial que a gente ve em g*)
+  | replicator : name -> name -> name -> connector. 
 
   (* We define a type which denotes the ports to fire and their respective data *)
   Inductive goMarks :=
@@ -115,11 +113,19 @@ Module ReoLogicCoq.
   Close Scope Q_scope.
 
   (* Model definition *)
+  (* Our valuation function depicts a proposition as a natural number, instead of a symbol. Its intuitive idea can
+     be expressed as "given a state s and a proposition as a natural number n, it will return whether it is valid or
+     not in s"*)
   Record model := mkmodel {
     Fr  : frame;
-    V : state -> Prop -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
-                              (*Erick : por questões operacionais (i.e., o que exatemnte é um pattern em cima de Prop)
+    V : state -> nat -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
+                              (*Erick : por questões operacionais (i.e., o que exatamente é um pattern em cima de Prop)
                                 Acho que devemos criar uma gramática p falar de proposições.*)
+                              (*edit: 10/05 - pode ser o caso de ser uma função state -> prop, e o retorno é uma
+                                proposição que denota que a proposição é realmente válida num estado. Parece
+                                ser a forma padrão de formalizar modelos de Kripke no Coq.*)
+                              (*edit: 10/05 - 2 - trocando p nat segundo a ideia explicada no exemplo, baseada
+                                em outras implementações de Kripke semantics em Coq.*)
   }.
 
   (* Parsing of a Reo program \pi *)
@@ -127,9 +133,8 @@ Module ReoLogicCoq.
   (* We define an inductive type for the conversion of a reo Connector to a Reo
      program by means of *parse* function *)
 
-
   Inductive program :=
-    | to : name -> name -> program (* sync *)
+    | to : name -> name -> program (* sync, replicator, merger *)
     | asyncTo : name -> name -> program (* LossySync : v0 era name ->  name -> name. não vejo necessidade disso *)
     | fifoAlt : name -> name -> program (* fifo *)
     | SBlock : name -> name -> program (* syncDrain *)
@@ -166,6 +171,15 @@ Module ReoLogicCoq.
               end
     end.
 
+  (*Lemma parseSoundSync: forall pi : list connector, forall s: list program, forall a b,
+                    In (sync a b) pi -> In (to a b) (parse pi s).
+  Proof.
+  (*intros.
+  split.*)
+  intros. induction pi. simpl in H2. inversion H2. inversion H2. 
+  rewrite H3. simpl. Search app. unfold parse.
+     *)
+
   Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec dataConnector eq :=
   {
   equiv_dec x y :=
@@ -183,26 +197,53 @@ Module ReoLogicCoq.
       | _, _ => in_right
     end
     }.
-  Proof.
+  
   all:congruence.
   Defined.
 
-  Fixpoint dInSetDataConnector (data: dataConnector) (s: set dataConnector) :=
+  Fixpoint dInSetDataConnector (s: set dataConnector) (data: dataConnector) :=
     match s with 
     | [] => false
-    | a::t => if data == a then true else dInSetDataConnector data t
+    | a::t => if data == a then true else dInSetDataConnector t data
     end.
 
+  Lemma dInSetDataConnectorSound : forall data : dataConnector, forall s: set dataConnector,
+                                   dInSetDataConnector s data = true <-> (exists d, In d s /\ d = data).
+  Proof.
+  intros. split.
+  - intros. induction s. simpl in H2. inversion H2.
+    simpl in H2. destruct equiv_dec in H2. inversion e. exists a. split.
+    simpl. auto. reflexivity.
+    apply IHs in H2. destruct H2. destruct H2. exists x.
+    split. simpl;auto. exact H3.
+  - intros. destruct H2. destruct H2. induction s. inversion H2.
+    simpl in H2. destruct H2. rewrite <- H2 in H3. rewrite H3. simpl. destruct equiv_dec. reflexivity.
+    congruence. apply IHs in H2. simpl. destruct equiv_dec. reflexivity. exact H2.
+  Qed.
+ 
   Fixpoint subset (s: set dataConnector) (s2 : (set dataConnector)) :=
     match s with
     | [] => true
-    | a::t => dInSetDataConnector a s2 && subset t s2
+    | a::t => dInSetDataConnector s2 a && subset t s2
     end.
 
+  Lemma subsetSound : forall s s2 : set dataConnector,
+    subset s s2 = true <-> ((forallb (dInSetDataConnector s2) (s) = true) \/ s = []).
+  Proof.
+  intros. split.
+  - intros. induction s. right. reflexivity.
+  simpl in H2. simpl. left. Search andb. rewrite andb_lazy_alt in H2. 
+  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2. apply IHs in H2.
+  destruct H2. split. reflexivity. auto. split. reflexivity. rewrite H2. simpl. reflexivity.
+  intros. rewrite H3 in H2. inversion H2.
+  - intros. induction s. reflexivity. destruct H2. simpl. simpl in H2. rewrite andb_lazy_alt in H2.
+  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2.
+  destruct H2. destruct IHs. left. reflexivity. auto. intros. rewrite H3 in H2. inversion H2. inversion H2.
+  Qed.
 
   (* Auxiliary function for goTo a b and dataPorts a x -> dataPorts b x *)
- Fixpoint port2port (dataSink : goMarks) (dataSource : set dataConnector) :=
-  match dataSource with
+  Fixpoint port2port (dataSink : goMarks) (dataSource : set dataConnector) :=
+  match dataSource with 
   | [] => []
   | ax::acc => match ax,dataSink with
                | dataPorts a x, goTo y b => if equiv_decb a y then [dataPorts b x] else port2port dataSink acc
@@ -280,6 +321,16 @@ Module ReoLogicCoq.
                 end
     end.
 
+  Lemma dataConnecetorToGoMarksFifo : forall t : set dataConnector, forall a, forall b, forall x, 
+    dataConnectorToGoMarksFifo t = [goFromFifo a x b] -> In (fifoData a x b) t.
+  Proof.
+  (*intros.
+  split .
+  - *)intros. induction t. simpl in H2. inversion H2. simpl in H2. case_eq (a0). intros. rewrite H3 in H2.
+  inversion H2. simpl. auto. intros. rewrite H3 in H2.
+  inversion H2. simpl. auto. 
+  Qed.
+
   (* Auxiliary definition to retrieve data from the input t to references of single data *)
   Fixpoint dataConnectorToGoMarksPorts (t : set dataConnector) (pi: program) : set goMarks :=
     match pi with
@@ -332,7 +383,7 @@ Module ReoLogicCoq.
     (*obs1: a manipulação de s no caso dos blocks vai dar problema 
     (coq não permite a manipulação do argumento decrescente em definições fix)
     ideia: iterar sobre o tamanho de s*)
-    (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de g
+    (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de parse
      Ou seja, acc fica livre de repetição por construção.*)
     (* obs3: a expressividade de casos axb não permite t ser set (name * data). t deve ter tipo set dataConnector *)
     match k with
@@ -460,24 +511,29 @@ Module ReoLogicCoq.
   Notation "pi *" := (star pi) (no associativity, at level 69).
 
   (* We formalize the notion of modalities *)
-
+  (*
   Inductive atomicFormula :=
-  | proposition : Prop -> atomicFormula
+  | proposition : (*Prop*) nat -> atomicFormula
   | box : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula
   | diamond : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula.
-
-  Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
-  Notation " [ t , pi ]" := (box t pi) (no associativity, at level 69).
+  (*11-05 A modalidade tem que aceitar fórmulas moleculares. A solução talvez seja por a modalidade
+    junto de atomicFormula *) *)
 
   (* We define our logic's syntax formulae based on classic modal logic's connectives *)
   Inductive formula :=
-  | atomic : atomicFormula -> formula
+  | proposition : (*Prop*) nat -> formula
+  | box : set dataConnector -> syntaticProgram -> formula -> formula
+  | diamond : set dataConnector -> syntaticProgram -> formula -> formula
   | and : formula -> formula -> formula
   | or : formula -> formula -> formula
   | neg : formula -> formula
   | impl : formula -> formula -> formula
   | biImpl : formula -> formula -> formula.
   (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
+
+
+  Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
+  Notation " [ t , pi ]" := (box t pi) (no associativity, at level 69).
 
   Variable pi : syntaticProgram.
   Variable t : set dataConnector.
@@ -545,7 +601,6 @@ Module ReoLogicCoq.
                         (flat_map (getTransitiveAux' relR m)(getNeighbors a relR))
     end.
 
-  (*TODO falta criar o par (a,states) com o a passado como parametro p função acima + estados obtidos na função abaixo. *)
   Fixpoint getTransitiveAux (S: set state) (relR : set (state * state)) : set (state * state) :=
     match S with
     | nil => nil
@@ -555,9 +610,8 @@ Module ReoLogicCoq.
   Definition getTransitive (m : model) := (*flat_map (getTransitiveAux' (R(Fr(m))) (length (R(Fr(m))))) (S(Fr(m))).*)
     getTransitiveAux (S(Fr(m))) (R(Fr(m))). 
 
-  (* TODO: corrigir. só ta pegando um nível de transitividade. *)
   Definition RTC (m:model) : set (state * state) :=
-   set_union equiv_dec (R(Fr(m))) ((*getTransitive m) ++*) (getReflexive m)).
+   set_union equiv_dec (R(Fr(m))) (set_union equiv_dec (getTransitive m) (getReflexive m)).
 
   (*We recover the states reached by means of \nu.pi *)
 
@@ -567,23 +621,31 @@ Module ReoLogicCoq.
 
   (* The notion of diamond and box satisfaction is defined as follows (for a single modality) *)
 
-  Definition diamondSatisfactionPi (m:model)(p : Prop) 
+  Definition diamondSatisfactionPi (m:model)(p : (*Prop*)nat) 
     (states : set state) :=
-    existsb (fun x : state => (V(m)x p)) states
-            (*retrieveRelatedStatesFromV (R(Fr(m))) s*). 
+    existsb (fun x : state => (V(m)x p)) states.
 
-  Definition boxSatisfactionPi (m:model) (*s:state*) (p : Prop) 
+  Definition boxSatisfactionPi (m:model) (*s:state*) (p : (*Prop*) nat) 
     (states: set state) :=
-    forallb (fun x : state => (V(m)x p)) states
-            (*retrieveRelatedStatesFromV (R(Fr(m))) s*). 
+    forallb (fun x : state => (V(m)x p)) states.
 
   Notation "x |> f" := (f x) (at level 79, no associativity).
 
   (* As we have the state, we need to verify whether it is valid in the model. *)
+  (* ideia: juntar evaluateFormulas em singleModelStep. qualquer coisa, dar
+  rollback pro que ta no git das definições de formula e atomicFormula *)
+  (* 12-05: a linguagem deve permitir que possamos modelar modalidades e fórmulas de forma
+    que formulas não sejam só atomicas, combinando-as com e/ou sem *)
 
-  Fixpoint singleModelStep (m:model) (formula: atomicFormula) (s:state) :=
+  Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
     match formula with
     | proposition p => (V(m) s p)
+    | neg p => negb (singleModelStep m p s) 
+    | and a b => (singleModelStep m a s) && (singleModelStep m b s)
+    | or a b => (singleModelStep m a s) || (singleModelStep m b s)
+    | impl a b => negb (singleModelStep m a s) || (singleModelStep m b s)
+    | biImpl a b => (negb (singleModelStep m a s) || (singleModelStep m b s)) &&
+                    (negb (singleModelStep m b s) || (singleModelStep m a s)) 
     | box t pi p' => match pi with
                   | sProgram reo => match p' with
                                    | proposition p'' => 
@@ -593,6 +655,28 @@ Module ReoLogicCoq.
                                           (retrieveRelatedStatesFromV (R(Fr(m))) s)
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | and a b => (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) &&
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | or a b => (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | neg a => negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) 
+                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | biImpl a b => (negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) &&
+                                                   (negb (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    end
                   | star reo => match p' with
                                    | proposition p'' => 
@@ -602,6 +686,28 @@ Module ReoLogicCoq.
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | and a b => (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) &&
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | or a b => (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | neg a => negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) 
+                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | biImpl a b => (negb (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) &&
+                                                   (negb (forallb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (forallb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
                   (* TODO testar p nu.pi*)
                   | nu reo => match p' with
@@ -614,6 +720,39 @@ Module ReoLogicCoq.
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
                                                     (getNuPiReachedState m t reo))
+                                   | and a b => (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))) &&
+                                                (forallb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | or a b => (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))) ||
+                                                (forallb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | neg a => negb (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (forallb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | biImpl a b => ((negb (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (forallb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) &&
+                                                   ((negb (forallb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (forallb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))))
                                  end
                      end
     | diamond t pi p' => match pi with
@@ -625,6 +764,28 @@ Module ReoLogicCoq.
                                           (retrieveRelatedStatesFromV (R(Fr(m))) s)
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (R(Fr(m))) s)
+                                   | and a b => (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) &&
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | or a b => (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | neg a => negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) 
+                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
+                                   | biImpl a b => (negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s))) &&
+                                                   (negb (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
+                                                (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    end
                   | star reo => match p' with
                                    | proposition p'' => 
@@ -634,6 +795,28 @@ Module ReoLogicCoq.
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (retrieveRelatedStatesFromV (RTC(m)) s)
+                                   | and a b => (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) &&
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | or a b => (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | neg a => negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) 
+                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
+                                   | biImpl a b => (negb (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s))) &&
+                                                   (negb (existsb (singleModelStep m b)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
+                                                (existsb (singleModelStep m a)
+                                           ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
                   (* TODO testar p nu.pi*)
                   | nu reo => match p' with
@@ -646,20 +829,61 @@ Module ReoLogicCoq.
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
                                                     (getNuPiReachedState m t reo))
+                                   | and a b => (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))) &&
+                                                (existsb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | or a b => (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))) ||
+                                                (existsb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | neg a => negb (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (existsb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))
+                                   | biImpl a b => ((negb (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (existsb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) &&
+                                                   ((negb (existsb (singleModelStep m b)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo)))) ||
+                                                (existsb (singleModelStep m a)
+                                           (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
+                                                    (getNuPiReachedState m t reo))))
                                    end
                   end
       end.
+
+  Lemma singleModelStepSound_1 : forall m, forall n, forall phi, forall s, 
+   phi = proposition n /\ (V(m) s n) = true -> singleModelStep m phi s = true.
+  Proof.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
+  Qed.
+  
 
 
 
   (* The evaluation of an atomic formula is done as follows *)
 
-  Definition singleFormulaVerify (m : model) (p : atomicFormula) 
+  Definition singleFormulaVerify (m : model) (p : formula) 
     (t: set dataConnector) : bool :=
-    (forallb (fun x => true) (map (singleModelStep m p) (getState m t))).
+    (forallb (fun x => eqb x true) (map (singleModelStep m p) (getState m t))).
 
 
   (* Then we evaluate composite formulae *)
+  (* segundo a função acima, ela deixa de ser necessária 
   Fixpoint evaluateFormulas (m:model) (phi : formula) (t: set dataConnector):=
     match phi with
     | atomic p => singleFormulaVerify m p t
@@ -670,8 +894,18 @@ Module ReoLogicCoq.
     | biImpl a b => ((negb (evaluateFormulas m a t)) || (evaluateFormulas m b t)) && 
                     ((negb (evaluateFormulas m b t)) || (evaluateFormulas m a t))
     end.
+    *)
 
-  End ReoLogicCoq.
+  (*We formalize the logic's axioms as the inductive type "formula" *)
+
+  (*ERICK: pergunto se phi e psi devem ser fórmulas atomicas. p mim, não. *)
+  (*Definition axiomK : forall t : set dataConnector, forall pi: syntaticProgram, 
+                      forall phi: (*atomicFormula*) formula,forall psi: (*atomicFormula*) formula,
+  (*Outra: [t,pi] (phi -> psi) -> ([t,pi] phi -> [t,pi] psi) usa nosso impl ou o -> do coq (no caso, a seta do meio?) *)
+     ([t,pi] (impl ((*proposition*) phi) ((*proposition*) psi))) ->
+           (impl ([t,pi] phi) ([t,pi] psi)) = True. *)
+
+  (*End ReoLogicCoq.*)
 End ReoLogicCoq.
 
 Require Export ListSet.

@@ -60,21 +60,21 @@ Instance sequencerPortsEq : EqDec sequencerPorts eq :=
   all:congruence.
   Defined.
 
-Definition program1 := [ReoLogicCoq.sync A B; ReoLogicCoq.sync B E; ReoLogicCoq.sync B C; ReoLogicCoq.sync C D; ReoLogicCoq.sync D A].
-Definition processed1 := ReoLogicCoq.parse program1 [].
+Definition program1 := [sync A B; sync B E; sync B C; sync C D; sync D A].
+Definition processed1 := parse program1 [].
 
 Eval compute in processed1.
 
 Eval compute in length processed1.
 
-Definition data1 := [ReoLogicCoq.dataPorts B 1].
+Definition data1 := [dataPorts B 1].
 
-Eval compute in ReoLogicCoq.go data1 processed1 (length processed1) [].
+Eval compute in go data1 processed1 (length processed1) [].
 
-Eval compute in ReoLogicCoq.fire data1 [ReoLogicCoq.goTo nat B E].
+Eval compute in fire data1 [goTo nat B E].
 
 
-(* new tests - 12/04 *)
+(* We define the states of the model *)
 
 Inductive statesSequencer := DA | DB | DC | DD | DE | DF | DG | D_DFIFOE | D_EFIFOF | D_FFIFOG.
 
@@ -187,73 +187,90 @@ Proof.
 all:congruence.
 Defined.
 
-(* Record frame := mkframe {
-    S : set state;
-    R : set (state * state);
-    lambda : state -> name -> QArith_base.Q;
-    delta : state -> set dataConnector
-  }.
-
-  Close Scope Q_scope.
-
-  (* Model definition *)
-  Record model := mkmodel {
-    Fr  : frame;
-    V : state -> set bool*)
 (* We define the Sequencer connector *)
-Definition SequencerProgram := [ReoLogicCoq.fifo D E; ReoLogicCoq.sync E A; ReoLogicCoq.fifo E F;
-ReoLogicCoq.sync F B; ReoLogicCoq.sync F G; ReoLogicCoq.fifo G C; ReoLogicCoq.sync G A].
+Definition SequencerProgram := [fifo D E; sync E A; fifo E F;
+sync F B; sync F G; fifo G C; sync G A].
 
 (* experimental *)
 Definition lambdaTest (s: statesSequencer) (port: sequencerPorts) : QArith_base.Q := 1.
 
+(* We define \delta \colon S \to T as follows.*)
 Definition deltaSequencer (s:statesSequencer) :=
   match s with
-  | DA => [ReoLogicCoq.dataPorts A 0;ReoLogicCoq.dataPorts A 1]
-  | DB => [ReoLogicCoq.dataPorts B 0;ReoLogicCoq.dataPorts B 1]
-  | DC => [ReoLogicCoq.dataPorts C 0;ReoLogicCoq.dataPorts C 1]
-  | DD => [ReoLogicCoq.dataPorts D 0;ReoLogicCoq.dataPorts D 1]
-  | DE => [ReoLogicCoq.dataPorts E 0;ReoLogicCoq.dataPorts E 1]
-  | DF => [ReoLogicCoq.dataPorts F 0;ReoLogicCoq.dataPorts F 1]
-  | DG => [ReoLogicCoq.dataPorts G 0;ReoLogicCoq.dataPorts G 1]
-  | D_EFIFOF => [ReoLogicCoq.fifoData E 0 F;ReoLogicCoq.fifoData E 1 F]
-  | D_FFIFOG => [ReoLogicCoq.fifoData F 0 G;ReoLogicCoq.fifoData F 1 G]
-  | D_DFIFOE => [ReoLogicCoq.fifoData D 0 E;ReoLogicCoq.fifoData D 1 E]
+  | DA => [dataPorts A 0;dataPorts A 1]
+  | DB => [dataPorts B 0;dataPorts B 1]
+  | DC => [dataPorts C 0;dataPorts C 1]
+  | DD => [dataPorts D 0;dataPorts D 1]
+  | DE => [dataPorts E 0;dataPorts E 1]
+  | DF => [dataPorts F 0;dataPorts F 1]
+  | DG => [dataPorts G 0;dataPorts G 1]
+  | D_EFIFOF => [fifoData E 0 F; fifoData E 1 F]
+  | D_FFIFOG => [fifoData F 0 G; fifoData F 1 G]
+  | D_DFIFOE => [fifoData D 0 E; fifoData D 1 E]
   end.
 
-Definition frame1 := ReoLogicCoq.mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_FFIFOG] 
+Definition frame1 := mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_FFIFOG] 
                     [(DD,D_DFIFOE);(D_DFIFOE,DE);(DE,DA);(DE,D_EFIFOF);(D_EFIFOF,DF);(DF,DB);(DF,D_FFIFOG);
                       (D_FFIFOG,DG);(DG,DD)] lambdaTest deltaSequencer.
 
-Definition valuationTest (s: statesSequencer) (p : Prop) := true.
 
-Eval compute in valuationTest DA (1 = 2).
+(* Idea  - map a natural number to a proposition. Then, our valuation function state -> set nat
+  tells us which propositions are valid in a state. This is entirely controlled by the user's model. *)
+
+Definition nat2Prop (n: nat) : Prop :=
+  match n with
+  | 1 => forall n, n = 2
+  | 2 => 100 = 100
+  | 3 => 12 = 34
+  | _ => False
+  end.
 
 
-Definition model1 := ReoLogicCoq.mkmodel frame1 valuationTest.
+Definition getProps (s: statesSequencer) : set nat :=
+  match s with
+  | DA => [1] (*An empty sete denotes no valid propositions on a state *)
+  | DB => []
+  | DC => []
+  | DD => []
+  | DE => [] 
+  | DF => []
+  | DG => []
+  | D_EFIFOF => []
+  | D_FFIFOG => []
+  | D_DFIFOE => [2] 
+  end.
 
-Definition pi := ReoLogicCoq.sProgram SequencerProgram.
+Definition valuationTest (s: statesSequencer) (p : nat) := 
+  existsb (fun x : nat => beq_nat p x) (getProps s).
 
-Definition t := [ReoLogicCoq.dataPorts D 1].
+Eval compute in valuationTest DA (2).
 
-Check ReoLogicCoq.singleFormulaVerify.
+Eval compute in valuationTest DE (1).
 
-Eval compute in ReoLogicCoq.singleFormulaVerify model1
-( ReoLogicCoq.box t pi (ReoLogicCoq.diamond t pi 
-    (ReoLogicCoq.proposition sequencerPorts nat True))) t.
 
-Eval compute in ReoLogicCoq.singleFormulaVerify model1 
-( ReoLogicCoq.box t pi (ReoLogicCoq.proposition sequencerPorts nat True)) t.
+Definition model1 := mkmodel frame1 valuationTest.
 
-Definition a : Prop := 1 = 2.
+Definition pi := sProgram SequencerProgram.
 
-Definition b : Prop := 3 = 4.
+Definition t := [dataPorts D 1].
 
-Eval compute in eq a b.
+Eval compute in singleFormulaVerify model1
+(box t pi (proposition sequencerPorts nat 2)) t.
 
-Eval compute in ReoLogicCoq.RTC model1.
+Eval compute in singleFormulaVerify model1
+      (box t pi 
+        (diamond t pi 
+          (diamond t pi
+            ((proposition sequencerPorts nat 1))))) t.
 
-Eval compute in ReoLogicCoq.getTransitive model1.
+Eval compute in singleFormulaVerify model1
+      (box t pi 
+        (diamond t pi 
+          (diamond t pi
+            (and (proposition sequencerPorts nat 1) (proposition sequencerPorts nat 1))))) t.
 
-Eval compute in ReoLogicCoq.getTransitiveAux' (ReoLogicCoq.R(ReoLogicCoq.Fr(model1)))
-69 DD.
+
+Eval compute in singleFormulaVerify model1
+  (diamond t pi (box t pi 
+    (proposition sequencerPorts nat 1))) t.
+
