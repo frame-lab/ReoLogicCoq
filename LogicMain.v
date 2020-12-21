@@ -10,6 +10,7 @@ Set Maximal Implicit Insertion.
 
 Close Scope Q_scope.
 
+
 (* Utils *)
 
 Program Fixpoint s1_in_s2 {A} `{EqDec A eq} (s1 s2 : set A) :=
@@ -76,6 +77,8 @@ Defined.
 (*Module ReoLogicCoq.*)
   Section ReoLogicCoq.
 
+  Section LogicMain.
+
   Variable name state data: Type.
   Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
 
@@ -86,7 +89,35 @@ Defined.
   | syncDrain : name -> name -> connector
   | asyncDrain : name -> name -> connector
   | merger : name -> name -> name -> connector
-  | replicator : name -> name -> name -> connector. 
+  | replicator : name -> name -> name -> connector.
+
+  Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector) eq :=
+    { equiv_dec :=
+      fix rec (x y : connector) :=
+      match x,y with
+      | sync a b, sync c d => if a == c then if b == d then in_left else in_right else in_right 
+      | lossySync a b, lossySync c d => if a == c then if b == d then in_left else in_right else in_right 
+      | fifo a b, fifo c d => if a == c then if b == d then in_left else in_right else in_right 
+      | syncDrain a b, syncDrain c d => if a == c then if b == d then in_left else in_right else in_right 
+      | asyncDrain a b, asyncDrain c d => if a == c then if b == d then in_left else in_right else in_right 
+      | merger a b c, merger d e f => if a == d then 
+                                        if b == e then 
+                                          if c == f then in_left 
+                                          else in_right 
+                                         else in_right 
+                                      else in_right
+      | replicator a b c, replicator d e f => if a == d then 
+                                                if b == e then 
+                                                  if c == f then in_left 
+                                                  else in_right 
+                                                else in_right 
+                                              else in_right
+      | _ , _ => in_right
+      end
+    }.
+  Proof.
+  all: congruence.
+  Defined.
 
   (* We define a type which denotes the ports to fire and their respective data *)
   Inductive goMarks :=
@@ -113,7 +144,8 @@ Defined.
   Close Scope Q_scope.
 
   (* Model definition *)
-  (* Our valuation function depicts a proposition as a natural number, instead of a symbol. Its intuitive idea can
+  (* Our valuation function depicts a proposition as a natural number, instead of directly using a member of Prop.
+     This is due to execution reasons. Its intuitive idea can
      be expressed as "given a state s and a proposition as a natural number n, it will return whether it is valid or
      not in s"*)
   Record model := mkmodel {
@@ -127,6 +159,53 @@ Defined.
                               (*edit: 10/05 - 2 - trocando p nat segundo a ideia explicada no exemplo, baseada
                                 em outras implementações de Kripke semantics em Coq.*)
   }.
+
+
+  (*06/04 - Redesign of Reo programs as \pi = (f,b) *)
+
+  Inductive flowProgram :=
+    | flowSync : name -> name -> flowProgram
+    | flowLossySync : name -> name -> flowProgram
+    | flowFifo : name -> name -> flowProgram
+    | flowMerger : name -> name -> name -> flowProgram
+    | flowReplicator : name -> name -> name -> flowProgram.
+
+  Inductive blockProgram :=
+    | flowSyncdrain : name -> name -> blockProgram
+    | flowaSyncdrain : name -> name -> blockProgram.
+
+  (* Lifting from \pi = (f,b) to \pi *)
+
+  Inductive reoProgram :=
+    | reoProg : set flowProgram -> set blockProgram -> reoProgram.
+
+  Definition singleFlow2Reo (flowProg : flowProgram) := 
+    match flowProg with
+    | flowSync a b => sync a b
+    | flowLossySync a b => lossySync a b
+    | flowFifo a b => fifo a b
+    | flowMerger a b c => merger a b c
+    | flowReplicator a b c => replicator a b c
+    end.
+
+  Definition singleBlock2Reo (blockProg : blockProgram) :=
+    match blockProg with
+    | flowSyncdrain a b => syncDrain a b
+    | flowaSyncdrain a b => asyncDrain a b
+    end.
+
+  Definition flow2Reo (setFlow : set flowProgram) :=
+    map (singleFlow2Reo) setFlow.
+
+  Definition block2Reo (setBlock : set blockProgram) :=
+    map (singleBlock2Reo) setBlock.
+
+  (* Now we transform the separation of \pi = (f,b) into \pi' for simplicity's sake *)
+  Definition program2SimpProgram (prog : reoProgram) : set connector :=
+    match prog with
+    | reoProg setFlow setBlock => 
+      set_union equiv_dec (flow2Reo setFlow) (block2Reo setBlock)
+    end.
 
   (* Parsing of a Reo program \pi *)
 
@@ -157,7 +236,7 @@ Defined.
   Defined.
   (* We define the function which coordinates the flow on the Reo program *)
 
-  Fixpoint parse (pi: list connector) (s : list program) : list program := (*alternativamente : set program sem o construtor composite *)
+  Fixpoint parse (pi: list connector) (s : list program) : list program :=
     match pi with
     | [] => s
     | a::t => match a with
@@ -171,16 +250,16 @@ Defined.
               end
     end.
 
-  (*Lemma parseSoundSync: forall pi : list connector, forall s: list program, forall a b,
+  Lemma parseSoundSync: forall pi : list connector, forall s: list program, forall a b,
                     In (sync a b) pi -> In (to a b) (parse pi s).
   Proof.
   (*intros.
   split.*)
-  intros. induction pi. simpl in H2. inversion H2. inversion H2. 
-  rewrite H3. simpl. Search app. unfold parse.
-     *)
+  intros. induction pi. destruct s. simpl in H2. inversion H2. inversion H2. 
+  simpl. simpl in H2. destruct H2.
+  - rewrite H2. Admitted.
 
-  Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec dataConnector eq :=
+  Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec (dataConnector) eq :=
   {
   equiv_dec x y :=
     match x, y with
@@ -197,7 +276,7 @@ Defined.
       | _, _ => in_right
     end
     }.
-  
+  Proof.
   all:congruence.
   Defined.
 
@@ -232,7 +311,7 @@ Defined.
   Proof.
   intros. split.
   - intros. induction s. right. reflexivity.
-  simpl in H2. simpl. left. Search andb. rewrite andb_lazy_alt in H2. 
+  simpl in H2. simpl. left. rewrite andb_lazy_alt in H2. 
   apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2. apply IHs in H2.
   destruct H2. split. reflexivity. auto. split. reflexivity. rewrite H2. simpl. reflexivity.
   intros. rewrite H3 in H2. inversion H2.
@@ -283,7 +362,7 @@ Defined.
     match s with
     | [] => []
     | dataMark::t => match dataMark with
-                     | goTo a b => match current with (* vou acabar redefinindo isso como outra função *)
+                     | goTo a b => match current with (*ERICK: vou acabar redefinindo isso como outra função. TODO verificar *)
                                    | goTo u v => if (equiv_decb b v) then (goTo u v)::(swap t current) 
                                                  else (goTo a b)::(swap t current)
                                    | goFifo u w v => if (equiv_decb b v) then (goFifo u w v)::(swap t current) 
@@ -324,12 +403,10 @@ Defined.
   Lemma dataConnecetorToGoMarksFifo : forall t : set dataConnector, forall a, forall b, forall x, 
     dataConnectorToGoMarksFifo t = [goFromFifo a x b] -> In (fifoData a x b) t.
   Proof.
-  (*intros.
-  split .
-  - *)intros. induction t. simpl in H2. inversion H2. simpl in H2. case_eq (a0). intros. rewrite H3 in H2.
+  intros. induction t. simpl in H2. inversion H2. simpl in H2. case_eq (a0). intros. rewrite H3 in H2.
   inversion H2. simpl. auto. intros. rewrite H3 in H2.
   inversion H2. simpl. auto. 
-  Qed.
+  Defined.
 
   (* Auxiliary definition to retrieve data from the input t to references of single data *)
   Fixpoint dataConnectorToGoMarksPorts (t : set dataConnector) (pi: program) : set goMarks :=
@@ -337,7 +414,7 @@ Defined.
     | fifoAlt a b =>  match t with
                   | [] => []
                   | ax::ta => match ax with
-                              | dataPorts a x  => [goFifo a x b]
+                              | dataPorts c x  => if (a == c) then [goFifo a x b] else dataConnectorToGoMarksPorts ta pi
                               | _ => dataConnectorToGoMarksPorts ta pi
                               end
                   end
@@ -385,11 +462,10 @@ Defined.
     ideia: iterar sobre o tamanho de s*)
     (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de parse
      Ou seja, acc fica livre de repetição por construção.*)
-    (* obs3: a expressividade de casos axb não permite t ser set (name * data). t deve ter tipo set dataConnector *)
     match k with
     | 0 => fire t acc
     | Datatypes.S n => match s with
-             | [] => []
+             | [] => fire t acc
              | prog::s' => match prog with
                         | to a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
                                         | dataPorts name1 data => (equiv_decb name1 a)
@@ -437,7 +513,7 @@ Defined.
                                       else
                                       if (existsb (fun x : (dataConnector) => match x with  (* caso 1 *)
                                         | fifoData name1 data name2 => (equiv_decb name1 a)
-                                        | _ => false
+                                        | dataPorts name1 name2 => (equiv_decb name1 a)
                                         end) (t)) then
                                         (go t s' n (acc++(dataConnectorToGoMarksPorts t (fifoAlt a b)))) (* caso 1 *)
                                       else
@@ -481,20 +557,28 @@ Defined.
     end.
   
   (* We define f as the top-level function to be used as follows *)
-  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := go t (parse pi []) (length pi) [].
+  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := 
+    go t (parse pi []) (length (parse pi [])) []. (* (length (parse pi [])) era (length pi) *)
 
   (* We define the computation of iterations bounded by repetition as follows. *)
   (* It returns the data flow of the connector which immediately preceeds a flow which have already happened.*)
 
   Definition boundedIteration : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
-    set (set dataConnector) -> (*set*) (set dataConnector)  :=
-    fix rec t pi iterations (*acc*) resp :=
+    set (set dataConnector) -> (set dataConnector)  :=
+    fix rec t pi iterations resp :=
       match iterations with
-      | 0 => last resp t (*as of 02-05-20, toda ocorrencia de last resp t era [last resp t] *)
+      | 0 => last resp t
       | Datatypes.S n => if existsb (subset t) resp
                          then (last resp t) 
                          else (rec (f t pi) pi n (resp ++ [t]))
-                          (*set_add equiv_dec t resp)*)
+      end.
+
+  Definition boundedIterationTrace : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
+    set (set dataConnector) -> (set (set dataConnector))  :=
+    fix rec t pi iterations resp :=
+      match iterations with
+      | 0 => resp 
+      | Datatypes.S n => if existsb (subset t) resp then [last resp t] else (rec (f t pi) pi n (resp ++ [t]))
       end.
 
   (** Syntatic definitions **)
@@ -502,22 +586,13 @@ Defined.
   (* sProgram stands for simple program *)
 
   Inductive syntaticProgram :=
-  | sProgram : set connector -> syntaticProgram
-  | nu : set connector -> syntaticProgram
-  | star : set connector -> syntaticProgram.
+  | sProgram : reoProgram -> syntaticProgram
+  | nu : reoProgram -> syntaticProgram
+  | star : reoProgram -> syntaticProgram.
 
   Notation "# pi" := (sProgram pi) (no associativity, at level 69).
   Notation "nu. pi" := (nu pi) (no associativity, at level 69).
   Notation "pi *" := (star pi) (no associativity, at level 69).
-
-  (* We formalize the notion of modalities *)
-  (*
-  Inductive atomicFormula :=
-  | proposition : (*Prop*) nat -> atomicFormula
-  | box : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula
-  | diamond : set dataConnector -> syntaticProgram -> atomicFormula -> atomicFormula.
-  (*11-05 A modalidade tem que aceitar fórmulas moleculares. A solução talvez seja por a modalidade
-    junto de atomicFormula *) *)
 
   (* We define our logic's syntax formulae based on classic modal logic's connectives *)
   Inductive formula :=
@@ -531,12 +606,27 @@ Defined.
   | biImpl : formula -> formula -> formula.
   (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
 
+  Context `{EqDec formula eq}.
+
 
   Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
-  Notation " [ t , pi ]" := (box t pi) (no associativity, at level 69).
+  Notation " [' t , pi ']" := (box t pi) (no associativity, at level 69).
 
-  Variable pi : syntaticProgram.
-  Variable t : set dataConnector.
+  Notation " a ---> b" := (impl a b) (left associativity, at level 79).
+
+  (* We provide a proposition to state a data item of a port *)
+
+  Definition dataFromPorts (data: dataConnector) :=
+    match data with
+    | dataPorts a x => x
+    | fifoData a x b => x
+    end.
+
+  Definition dataInPort (n: dataConnector) (d:data): Prop := 
+    dataFromPorts n = d. 
+
+  Definition dataInFifo (n: dataConnector) (d: data) : Prop :=
+    dataFromPorts n = d.
 
   Fixpoint getData (portsData : set dataConnector) (portName : name) (portData : data) : bool :=
     match portsData with 
@@ -560,7 +650,7 @@ Defined.
   (* We retrieve the verification's initial state based on the data flow t*)
   Fixpoint getInitialStateAux (m:model) (states : set state) (t: set dataConnector) :=
     match states with
-    | nil => nil (*erick: posso ter mais de um estado inicial?*)
+    | nil => nil
     | st::states' => if (subset t (delta(Fr m) st)) then st::getInitialStateAux m states' t
                      else getInitialStateAux m states' t
     end.
@@ -607,7 +697,7 @@ Defined.
     | state::otherStates => set_union equiv_dec (createNewPair state (getTransitiveAux' relR (length relR) state)) (getTransitiveAux otherStates relR)
     end. 
 
-  Definition getTransitive (m : model) := (*flat_map (getTransitiveAux' (R(Fr(m))) (length (R(Fr(m))))) (S(Fr(m))).*)
+  Definition getTransitive (m : model) := 
     getTransitiveAux (S(Fr(m))) (R(Fr(m))). 
 
   Definition RTC (m:model) : set (state * state) :=
@@ -616,28 +706,25 @@ Defined.
   (*We recover the states reached by means of \nu.pi *)
 
   Definition getNuPiReachedState (m:model) (t: set dataConnector) (reoConnector: set connector) :=
-    getState (m) (boundedIteration t reoConnector (length reoConnector) []).
+    getState (m) (boundedIteration t reoConnector (length reoConnector * 2) []).
 
+  (* The notion of diamond and box satisfaction is defined as follows *)
 
-  (* The notion of diamond and box satisfaction is defined as follows (for a single modality) *)
-
-  Definition diamondSatisfactionPi (m:model)(p : (*Prop*)nat) 
+  Definition diamondSatisfactionPi (m:model) (p : nat) 
     (states : set state) :=
+    if (states == []) then false else (*Clausula adicionada p sequencis de estados não encontrada por Nu.Pi, por exemplo *)
     existsb (fun x : state => (V(m)x p)) states.
 
-  Definition boxSatisfactionPi (m:model) (*s:state*) (p : (*Prop*) nat) 
+  Definition boxSatisfactionPi (m:model) (p : nat) 
     (states: set state) :=
+    if (states == []) then false else (*Clausula adicionada p sequencis de estados não encontrada por Nu.Pi, por exemplo *)
     forallb (fun x : state => (V(m)x p)) states.
 
   Notation "x |> f" := (f x) (at level 79, no associativity).
 
-  (* As we have the state, we need to verify whether it is valid in the model. *)
-  (* ideia: juntar evaluateFormulas em singleModelStep. qualquer coisa, dar
-  rollback pro que ta no git das definições de formula e atomicFormula *)
-  (* 12-05: a linguagem deve permitir que possamos modelar modalidades e fórmulas de forma
-    que formulas não sejam só atomicas, combinando-as com e/ou sem *)
 
   Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
+    (*ERICK: refatorar essa função*)
     match formula with
     | proposition p => (V(m) s p)
     | neg p => negb (singleModelStep m p s) 
@@ -709,50 +796,49 @@ Defined.
                                                 (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
-                  (* TODO testar p nu.pi*)
                   | nu reo => match p' with
                                    | proposition p'' => 
                                        boxSatisfactionPi (m) (p'')
-                                       (getNuPiReachedState m t reo)
+                                       (getNuPiReachedState m t (program2SimpProgram reo))
                                    | box t' pi' p'' => forallb (singleModelStep m p')
                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t reo))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t reo))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
                                    | and a b => (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))) &&
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) &&
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | or a b => (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | neg a => negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | impl a b => (negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | biImpl a b => ((negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) &&
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) &&
                                                    ((negb (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))))
                                  end
                      end
     | diamond t pi p' => match pi with
@@ -818,50 +904,49 @@ Defined.
                                                 (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
-                  (* TODO testar p nu.pi*)
                   | nu reo => match p' with
                                    | proposition p'' => 
                                        diamondSatisfactionPi (m) (p'')
-                                       (getNuPiReachedState m t reo)
+                                       (getNuPiReachedState m t (program2SimpProgram reo))
                                    | box t' pi' p'' => forallb (singleModelStep m p')
                                           (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t reo))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t reo))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
                                    | and a b => (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))) &&
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) &&
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | or a b => (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | neg a => negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | impl a b => (negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
                                    | biImpl a b => ((negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) &&
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) &&
                                                    ((negb (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo)))) ||
+                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t reo))))
+                                                    (getNuPiReachedState m t (program2SimpProgram reo)))))
                                    end
                   end
       end.
@@ -869,11 +954,28 @@ Defined.
   Lemma singleModelStepSound_1 : forall m, forall n, forall phi, forall s, 
    phi = proposition n /\ (V(m) s n) = true -> singleModelStep m phi s = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
-  Qed.
-  
+  intros. destruct H3. rewrite H3. simpl. exact H4.
+  Defined.
 
+  Lemma singleModelStepSound_2 : forall m, forall phi, forall phi', forall s, 
+   phi = neg phi' /\ (singleModelStep m phi' s) = false -> (singleModelStep m phi s) = true.
+  Proof.
+  intros. destruct H3. rewrite H3. simpl. rewrite H4. reflexivity.
+  Defined.
 
+  Lemma singleModelStepSound_3 : forall m, forall phi, forall phi', forall phi'', forall s,
+  phi = (and phi' phi'') /\ ((singleModelStep m phi' s) && (singleModelStep m phi'' s)) = true
+    ->  (singleModelStep m phi s) = true.
+  Proof.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
+  Defined.
+
+  Lemma singleModelStepSound_4 : forall m, forall phi, forall phi', forall phi'', forall s,
+  phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
+    ->  (singleModelStep m phi s) = true.
+  Proof.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
+  Defined.
 
   (* The evaluation of an atomic formula is done as follows *)
 
@@ -881,32 +983,291 @@ Defined.
     (t: set dataConnector) : bool :=
     (forallb (fun x => eqb x true) (map (singleModelStep m p) (getState m t))).
 
-
-  (* Then we evaluate composite formulae *)
-  (* segundo a função acima, ela deixa de ser necessária 
-  Fixpoint evaluateFormulas (m:model) (phi : formula) (t: set dataConnector):=
-    match phi with
-    | atomic p => singleFormulaVerify m p t
-    | and a b => evaluateFormulas m a t && evaluateFormulas m b t
-    | or a b => evaluateFormulas m a t || evaluateFormulas m b t
-    | neg a => negb (evaluateFormulas m a t)
-    | impl a b => (negb (evaluateFormulas m a t)) || (evaluateFormulas m b t)
-    | biImpl a b => ((negb (evaluateFormulas m a t)) || (evaluateFormulas m b t)) && 
-                    ((negb (evaluateFormulas m b t)) || (evaluateFormulas m a t))
-    end.
-    *)
-
   (*We formalize the logic's axioms as the inductive type "formula" *)
 
-  (*ERICK: pergunto se phi e psi devem ser fórmulas atomicas. p mim, não. *)
-  (*Definition axiomK : forall t : set dataConnector, forall pi: syntaticProgram, 
-                      forall phi: (*atomicFormula*) formula,forall psi: (*atomicFormula*) formula,
-  (*Outra: [t,pi] (phi -> psi) -> ([t,pi] phi -> [t,pi] psi) usa nosso impl ou o -> do coq (no caso, a seta do meio?) *)
-     ([t,pi] (impl ((*proposition*) phi) ((*proposition*) psi))) ->
-           (impl ([t,pi] phi) ([t,pi] psi)) = True. *)
+  (*Dynamic Logic Axioms*)
 
-  (*End ReoLogicCoq.*)
-End ReoLogicCoq.
+  Definition axiomK (phi: option formula) : option formula :=
+    match phi with
+    | Some (box t pi (impl phi' phi'')) => Some (impl (box t pi phi') (box t pi phi''))
+    | _ => None
+    end.
+
+  Definition axiomAnd (phi : option formula) : option formula :=
+    match phi with
+    | Some (box t pi (and phi' phi'')) => Some ( and (box t pi phi') (box t pi phi''))
+    | _ => None
+    end.
+
+  Definition axiomDu (phi: option formula) : option formula :=
+    match phi with
+    | Some (box t pi (neg phi')) => Some (neg (diamond t pi phi'))
+    | Some (neg (diamond t pi phi')) => Some (box t pi (neg phi') )
+    | _ => None
+    end.
+
+
+  Definition axiomR (phi: option formula) : option formula :=
+    match phi with
+    | Some (diamond t pi phi) => Some phi
+    | _ => None
+    end.
+
+  Definition axiomIt (phi: option formula) : option formula :=
+    match phi with
+    | Some (and (phi') (box t (sProgram pi) (box t' (star pi') phi''))) => if (equiv_decb phi' phi'')(*&&
+        (equiv_decb pi pi') then *) then
+        Some (box t (star pi') phi') else None (*ERICK: da erro se usarmos a mesma
+variavel no pattern matching em dois lugares diferentes.R: usar variaveis diferentes e forçar a ser igual.*)
+    | Some (box t (star pi) phi') => Some (and (phi') (box t (sProgram pi) (box t (star pi) phi')))
+    | _ => None
+    end.  
+
+  (*29/07/2020 os axiomas não serão usados aqui
+    para provas sintáticas. Isso vai ficar pro nosso Tableaux *)
+
+  Definition axiomInd (phi: option formula) : option formula :=
+    match phi with
+    | Some (and (phi') (box t pi (impl (phi'') (box t' (star pi') phi''')))) => Some (box t (star pi') phi')
+    | _ => None
+    end.
+
+  Definition axiomNu1 (phi: option formula) : option formula :=
+    match phi with
+    | Some (diamond t (nu pi) phi') => Some (diamond t (star pi) (diamond t (nu pi) phi')) (*ERICK: o segundo 
+    t é um t'*)
+    | _ => None
+    end.
+
+  Check formula.
+
+  End LogicMain.
+  Section ModelExecution.
+
+  Variable name state data: Type.
+  Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
+ 
+  (* A model checker for ReLo *)
+
+  (*ERICK: rodar a função abaixo p todas as portas do modelo que estão em T*)
+
+  Definition retrieveSinglePortProp (t : set (dataConnector name data)) (index : nat) (n : name)
+    : set (nat * Prop) :=
+    match t with
+    | [] => []
+    | a::t' => match a with
+               | dataPorts a x => if (n == a) then [(Datatypes.S (index), dataInPort (dataPorts n x) x)] else []
+               | fifoData a x b => []
+               end
+    end.
+
+  Definition sameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : bool :=
+    match n1,n2 with
+    | dataPorts a x, dataPorts b y => (equiv_decb x y)
+    | _, _ => false
+    end.
+
+  Definition portsHaveSameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : Prop :=
+    match n1,n2 with
+    | dataPorts a x, dataPorts b y => (dataInPort (dataPorts a x) x) = (dataInPort (dataPorts b y) y)
+    | _ , _ => False
+    end.
+    
+  Fixpoint retrieveTwoPortsProp  (index:nat) (t: set (dataConnector name data)) 
+    (n : (dataConnector name data)) : set (nat * Prop) :=
+    match t with
+    | [] => []
+    | a::t' => if (sameData n a) then [(index, portsHaveSameData a n)]++(retrieveTwoPortsProp index t' n)
+               else (retrieveTwoPortsProp index t' n)
+    end.
+
+  Fixpoint constructSetOfStates (phi: formula (set (dataConnector name data))
+    (syntaticProgram name)) (n: nat) : set nat :=
+    match phi with 
+    | proposition _ _ p => [n]
+    | neg p => set_add equiv_dec (n) (constructSetOfStates p (n))
+    | and a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
+                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
+    | or a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
+                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
+    | impl a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
+                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
+    | biImpl a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
+                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
+    | box t pi p' => set_add equiv_dec (n) (constructSetOfStates p' (Datatypes.S n))
+    | diamond t pi p' => set_add equiv_dec (n) (constructSetOfStates p' (Datatypes.S n))
+  end.
+
+  (* Equality relation for data items *)
+  Instance dataConnectorEqDec2 {name} {data} `(eqa : EqDec name eq) `(eqb: EqDec data eq) : EqDec (dataConnector name data) eq :=
+    { equiv_dec :=
+      fix rec (x y : dataConnector name data) :=
+      match x,y with
+      | dataPorts a b, dataPorts c d => if a == c then if b == d then in_left else in_right else in_right
+      | fifoData a x b, fifoData c y d => if a == c then if b == d then if x == y 
+                                          then in_left else in_right else in_right else in_right
+      | _, _ => in_right
+      end
+    }.
+    Proof.
+    all: congruence.
+    Defined.
+  (* We also consider FIFO entries to derive propositions *)
+
+  Definition dataInFIFO (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : Prop :=
+    if (equiv_decb n1 n2) then 
+      match n1,n2 with
+      | fifoData a x b, fifoData c y d => dataInFifo (fifoData a x b) x
+      | _, _ => False
+      end
+    else False.
+
+  Fixpoint retrieveFIFOdataProp (index: nat) (t: set (dataConnector name data)) 
+    (n : dataConnector name data) : set (nat * Prop) :=
+    match t with
+    | fifodata::t' => match fifodata with
+                    | fifoData a x b => if (equiv_decb fifodata n) then [(index, dataInFIFO fifodata n)]++(retrieveFIFOdataProp index t' n)
+                                        else (retrieveFIFOdataProp index t' n)
+                    | dataPorts a b => (retrieveFIFOdataProp index t' n)
+                    end
+    | [] => []
+    end.
+
+  Definition buildValidPropositions (N: set name) (t: set (dataConnector name data)) 
+    (index: nat) :=
+    ((flat_map(retrieveTwoPortsProp index t) (t)) ++
+    (flat_map(retrieveSinglePortProp t index) (N))) ++
+    (flat_map(retrieveFIFOdataProp index t) t).
+
+  Fixpoint getProp (setProp: set (nat * Prop)) (n: nat) : bool :=
+    match setProp with  
+    | [] => false
+    | a::t => if (fst(a) == n) then true else getProp t n
+    end.
+
+  (*aqui teremos dois nat: um indicando o index das proposições e p o que denota a proposição em si. *)
+   Definition getValFunction (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:nat) :=
+    getProp ((buildValidPropositions N t index)) p.
+
+  Definition setStateForProp (s: nat) := [s].
+
+  Definition lambdaForProp (s :nat) (n: name) := (Qmake 0 1).
+
+  (* The markup for a single state is the same input markup *)
+  Definition deltaForProp (t: set (dataConnector name data)) (s:nat) := t.
+
+  Definition buildPropFrame (t: set (dataConnector name data)) (s:nat) := 
+    mkframe (setStateForProp s) ([]) (lambdaForProp)
+    (deltaForProp t).
+
+  (* The construction of the model is done by the following definition *)
+
+  Definition buildPropModel (N: set name)(t: set (dataConnector name data)) (s:nat) :=
+    mkmodel (buildPropFrame t s) (getValFunction N t s).
+
+  Check buildPropModel.
+
+  (*Enables the user to verify the created prpopsitions by the system, based on the data input*)
+
+  Definition getSetOfProps (N: set name)(t: set (dataConnector name data)) (s:nat) := 
+    buildValidPropositions N t s.
+
+  (*We extend the above notions to modal formulas (does not consider iteration yet)*)
+
+  (* The following definition is employed in deriving the model of neg p based on the model for p, 
+      p a proposition *)
+  Fixpoint negatePropositions (setProps: set (nat * Prop)) :=
+    match setProps with
+    | [] => []
+    | prop::moreProps => [~ (snd prop)] ++ (negatePropositions moreProps)
+    end.
+(* Definition concatFrames (f1: frame) (f2: frame) :=
+    mkframe (set_union equiv_dec (S (f1)) (S (f2))) ()
+
+  Não é bem uma concatenação de frames/modelos que estou atrás, mas de um append dos estados
+  alcançados na etepa k+1 com o modelo que temos na etapa k.
+
+  Definition concatModels (m1: model) (m2: model) :=
+    mkmodel
+  ou seria o caso de considerar sempre o modelo gerado a partir do ultimo estado? 
+  *)
+
+
+  (*Passo 1: parametrizar o modelo. A chamada recursiva terá o modelo atual mais o da próxima etapa *)
+(*   Fixpoint getNextmodelStep (n: set name) (t: set (dataConnector name data)) (index:nat) 
+    (phi: (formula name data)) :=
+    match phi with
+    | proposition _ _ p => buildPropModel n t (Datatypes.S index)
+    | neg p => buildPropModel n t (Datatypes.S index) (*Corrigir*)
+    | box t pi p => match p with
+                    | proposition _ _ p' => match pi with
+                                            | sProgram pi' => buildPropModel n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index)
+                                            | _ => buildPropModel n t (Datatypes.S index) (*Habilitar p programas com operadores *)
+                                            end
+                    | _ => match pi with
+                           | sProgram pi' => getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p)
+                           | star pi' =>  getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p) (*corrigir*)
+                           | nu pi' => getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p) (*corrigir*)
+                           end
+                    end
+    | diamond t pi p => match p with
+                    | proposition _ _ p' => match pi with
+                                            | sProgram pi' => buildPropModel n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index)
+                                            | _ => buildPropModel n t (Datatypes.S index) (*Habilitar p outros programas *)
+                                            end
+                    | _ => match pi with
+                           | sProgram pi' => getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p)
+                           | star pi' =>  getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p) (*corrigir*)
+                           | nu pi' => getNextmodelStep n ((f(t)(program2SimpProgram (pi')))) (Datatypes.S index) (p) (*corrigir*)
+                           end
+                    end
+    | _ => buildPropModel n t (Datatypes.S index) (*TODO corrigir*)
+    end.  (*versão antiga, sem o uso de singleFormulaVerify *) *)
+
+   Fixpoint getNextmodelStep (n: set name) (t: set (dataConnector name data)) (index:nat) 
+    (phi: (formula name data)) :=
+    match phi with
+    | proposition _ _ p => singleFormulaVerify (buildPropModel n t (index)) phi (t)
+                            
+    | diamond t pi p => match pi with (*Cláusula dos programas está estranha: eu ando com o modelo mas passo a fórmula original?*)
+                        | sProgram pi' =>
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi'))) (length
+                                             (* onde tá (f(t)(program2SimpProgram (pi'))) era t. Isso não refletia a realidade.*) 
+                                            ((buildValidPropositions n t index)))) phi (f(t)(program2SimpProgram (pi')))
+                        | star pi' => 
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi'))) (length 
+                                            ((buildValidPropositions n t index)))) phi (f(t)(program2SimpProgram (pi')))
+                        | nu pi' => 
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi'))) (length 
+                                            ((buildValidPropositions n t index)))) phi (f(t)(program2SimpProgram (pi')))
+                        end
+    | box t pi p => match pi with
+                        | sProgram pi' => 
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi')))  (length 
+                                            ((buildValidPropositions n t index)))) p (f(t)(program2SimpProgram (pi')))
+                        | star pi' => 
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi')))  (length 
+                                            ((buildValidPropositions n t index)))) p (f(t)(program2SimpProgram (pi')))
+                        | nu pi' => 
+                         singleFormulaVerify (buildPropModel n (f(t)(program2SimpProgram (pi')))  (length 
+                                            ((buildValidPropositions n t index)))) p (f(t)(program2SimpProgram (pi')))
+                        end
+    | and a b => getNextmodelStep n (t) (Datatypes.S index) a &&
+                 getNextmodelStep n (t) (Datatypes.S index) b
+    | or a b =>  getNextmodelStep n (t) (Datatypes.S index) a ||
+                 getNextmodelStep n (t) (Datatypes.S index) b
+    | impl a b => (negb (getNextmodelStep n (t) (Datatypes.S index) a)) ||
+                 getNextmodelStep n (t) (Datatypes.S index) b
+    | biImpl a b => ((negb (getNextmodelStep n (t) (Datatypes.S index) a)) ||
+                 getNextmodelStep n (t) (Datatypes.S index) b) && 
+                    ((negb (getNextmodelStep n (t) (Datatypes.S index) b)) ||
+                 getNextmodelStep n (t) (Datatypes.S index) a)
+    | neg a => (getNextmodelStep n (t) (Datatypes.S index) a)
+
+    end.
+
+  End ModelExecution.
+  End ReoLogicCoq.
 
 Require Export ListSet.
 Require Export List.
