@@ -354,6 +354,8 @@ Eval compute in singleFormulaVerify sequencerModel
 
 Eval compute in buildValidPropositions [D] t (0).
 
+Definition testModel := buildPropModel ([D]) (t) (0).
+
 Eval compute in singleFormulaVerify 
   (buildPropModel ([D]) (t) (0)) (proposition ports nat 1) t.
 
@@ -364,16 +366,58 @@ Eval compute in buildValidPropositions [D] t 0.
 
 (*Tests for composite formula - 09/11*)
 
-Eval compute in (getNextmodelStep [A ; B ; C ; D ; E ; F ; G] t 0
-     (box t pi (proposition ports nat 0))). (* Deveria ser false - SOLUÇÃO: O t passado como parâmetro não estava Ok.*)
+Eval compute in (getNextmodelStep testModel [A ; B ; C ; D ; E ; F ; G] t 0
+     (box t pi (proposition ports nat 1))) [0]. 
 
-Eval compute in buildPropModel [A ; B ; C ; D ; E ; F ; G]
-  (f(t)(program2SimpProgram ((reoProg SequencerProgram [])))) 1.
+(* verificar o modelo resultate da geringonça abaixo*)
+Eval compute in getNextmodelStep (addInfoToModel testModel 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
+                           (f(t)(program2SimpProgram (reoProg SequencerProgram []))))
+                            [A ; B ; C ; D ; E ; F ; G] (f(t)(program2SimpProgram (reoProg SequencerProgram []))) (Datatypes.S 0) (proposition ports nat 0) 
+                            (set_add equiv_dec (Datatypes.S 0) ([0])).
+
+Definition grete := getModel (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi (proposition ports nat 0)) []. 
+
+Eval compute in grete. (*Problema 1: qqr estado tá com o delta do estado atual *)
+
+Eval compute in delta(Fr(grete)) 1.
+
+Eval compute in singleFormulaVerify (grete) (box t pi (proposition ports nat 666)) t. 
+
+(* 31/12 - O problema aqui ta no estado inicial do modelo
+induzido por t em grete. Isso é vazio por causa da relação delta não compreender o todo, 
+  apenas o estado atual (do jeito que tá hoje *)
 
 
-(* o índice deve ser globalizado para as três funções que constroem o prop. Reseta a cada estado
-  SOLUÇÃO: a cada iteração do motor, calcula o tamanho das proposiões válidas naquele estado e passa como parâmetro. *)
-Eval compute in buildValidPropositions [D] ([dataPorts D 1; fifoData D 1 E]) 0.
+Eval compute in getValFunction [A ; B ; C ; D ; E ; F ; G] 
+    (f(t)(program2SimpProgram (reoProg SequencerProgram []))) 1.
+
+Eval compute in  V(addInfoToModel (emptyModel ports nat) 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
+                           (f(t)(program2SimpProgram (reoProg SequencerProgram [])))).
+
+(*O que o capeta do singleFormulaVerify tá fazendo?*)
+Eval compute in getState grete (f(t)(program2SimpProgram (reoProg SequencerProgram []))). 
+(*O delta de grete tá cagado. Na real, tá certo. O probelma é que isso tá dando true, quando não devia.
+ERICK: para funcionar corretamente, toda a função de transição deverá ser armazenada, por causa da getState na definição de
+SingleFormulaVerify*)
+
+
+
+Definition grete2 := getModel (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi(box t pi(box t pi(box t pi
+    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) [(0,t)].
+
+Eval compute in grete2.
+
+Eval compute in getVisitedStates (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi(box t pi((proposition ports nat 0))))
+  [(0,t)].
+
+(*PERGUNTA: Nested formulas devem já vir com o f(t) na formula?
+  Adicionar um ' no t interno na clausula da modalidade na função resolve o problema.
+  Isso faz com que ele ignore os t de subsequentes aninhamentos (i.e., box t pi (box t pi (phi))
+  vai pegar o primeiro t e disparar por quantas modalidades existirem a direita, o que
+  teoricamente é o certo, salvo o cracudo meta um t' diferente od que f(t) traz.*)
 
 (* Example 2 *)
 
