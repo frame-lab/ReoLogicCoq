@@ -3,7 +3,7 @@ Require Import List.
 Require Import Classes.EquivDec.
 Require Import Coq.Program.Program.
 Require Import QArith.
-
+Import ListNotations.
 
 Set Implicit Arguments.
 Set Maximal Implicit Insertion.
@@ -19,9 +19,10 @@ Program Fixpoint s1_in_s2 {A} `{EqDec A eq} (s1 s2 : set A) :=
     | a::t => set_mem equiv_dec a s2 && s1_in_s2 t s2
   end.
 
+
 Instance option_eqdec A `{EqDec A eq} : EqDec (option A) eq :=
 {
-  equiv_dec x y :=
+  equiv_dec (x y: option A) :=
     match x, y with
       | Some a, Some b => if a == b then in_left else in_right
       | None, None => in_left
@@ -714,19 +715,18 @@ Defined.
 
   Definition diamondSatisfactionPi (m:model) (p : nat) 
     (states : set state) :=
-    if (states == []) then false else (*Clausula adicionada p sequencis de estados não encontrada por Nu.Pi, por exemplo *)
+    if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
     existsb (fun x : state => (V(m)x p)) states.
 
   Definition boxSatisfactionPi (m:model) (p : nat) 
     (states: set state) :=
-    if (states == []) then false else (*Clausula adicionada p sequencis de estados não encontrada por Nu.Pi, por exemplo *)
+    if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
     forallb (fun x : state => (V(m)x p)) states.
 
   Notation "x |> f" := (f x) (at level 79, no associativity).
 
 
   Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
-    (*ERICK: refatorar essa função*)
     match formula with
     | proposition p => (V(m) s p)
     | neg p => negb (singleModelStep m p s) 
@@ -979,6 +979,21 @@ Defined.
   intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
+  Lemma singleModelStepSound_5 : forall m, forall phi, forall phi', forall phi'', forall s,
+  phi = (biImpl phi' phi'') /\ (negb (singleModelStep m phi' s) || (singleModelStep m phi'' s)) &&
+                               (negb (singleModelStep m phi'' s) || (singleModelStep m phi' s))  = true
+    ->  (singleModelStep m phi s) = true.
+  Proof.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
+  Defined.
+
+  Lemma singleModelStepSound_6 : forall m, forall phi, forall phi', forall phi'', forall s,
+  phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
+    ->  (singleModelStep m phi s) = true.
+  Proof.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
+  Defined.
+
   (* The evaluation of an atomic formula is done as follows *)
 
   Definition singleFormulaVerify (m : model) (p : formula) 
@@ -1136,7 +1151,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   Definition buildValidPropositions (N: set name) (t: set (dataConnector name data)) 
-    (index: nat) :=
+    (index: nat) : set (nat * Prop) :=
     ((flat_map(retrieveTwoPortsProp index t) (t)) ++
     (flat_map(retrieveSinglePortProp t index) (N))) ++
     (flat_map(retrieveFIFOdataProp index t) t).
@@ -1150,9 +1165,9 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   (*aqui teremos dois nat: um indicando o index das proposições e p o que denota a proposição em si. *)
   (*ERICK: Aparentemente tem dois indices repetidos ali embaixo:
     index: estado que quero calcular
-    s ;estado a avaliar (pela assinatura da função)
+    s ;estado a avaliar (pela assinatura da função. A grosso modo, S = index)
     p : prop -> verificar*)
-   Definition getValFunction (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:nat) :=
+   Definition getValFunctionProp (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:nat) :=
     getProp ((buildValidPropositions N t index)) p.
 
   Definition setStateForProp (s: nat) := [s].
@@ -1169,24 +1184,59 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   (* The construction of the model is done by the following definition *)
 
   Definition buildPropModel (N: set name)(t: set (dataConnector name data)) (s:nat) :=
-    mkmodel (buildPropFrame t s) (getValFunction N t s).
+    mkmodel (buildPropFrame t s) (getValFunctionProp N t s).
+
+  (*Auxiliary function employed by the function below it*)
+
+  Fixpoint getDelta (dataMarkups : set (nat * set (dataConnector name data))) (state: nat) :=
+    match dataMarkups with
+    | [] => []
+    | dataMarkup::moreData => if fst(dataMarkup) == state then snd(dataMarkup) else getDelta moreData state
+    end.
 
   (*We may also construct composite models by joining states and the relation between them *)
+  (*props : set of states and the propositions that hold in them.*)
+  Fixpoint getValFunction (props : set (nat * (set nat))) (state : nat) (prop: nat) :=
+    match props with
+    | [] => false
+    | stateAndProp::moreProps => if fst(stateAndProp) == state then
+                                  set_mem equiv_dec (prop) (snd(stateAndProp))
+                                 else getValFunction moreProps state prop
+    end.
 
-  (*o Delta do estado deve ser recalculado segundo o estado destino*)
+  (*ERICK: a ideia é computar primeiro o conjunto nat * Prop onde tenho o mapa das proposições para um índice natural. Depois,
+    preciso calcular o mapa nat * set nat, onde nat é o estado e set nat é o conjunto de proposições válidas naquele estado.*)
+
+  (* Auxiliary record to hold the global index of props*)
+  Record calcProps := mkcalcProps {
+    statesAndProps : set (nat * (set nat));
+    propCounter : nat
+  }.
+
+  (*Returns the index of propositions construted at a specific state *)
+  Fixpoint getIndexOfProps (setProps: set (nat * Prop)) : set nat :=
+    match setProps with
+    | [] => []
+    | prop::moreProps => set_union equiv_dec [fst(prop)] (getIndexOfProps moreProps)
+    end.
+
+  Definition getNewValFunc (calc: calcProps) (N: set name) (t:set (dataConnector name data)) (state: nat) :=
+  mkcalcProps (set_add equiv_dec (state,getIndexOfProps(buildValidPropositions N t (propCounter(calc)))) (statesAndProps calc)) 
+              (propCounter(calc) + length (getIndexOfProps(buildValidPropositions N t state))).
 
    Definition addInfoToModel (m: model name nat data) (origin:nat) (dest: nat) 
-    (N: set name) (t:set (dataConnector name data)) :=
+    (N: set name) (t:set (dataConnector name data)) (dataMarkups : (set (nat * set (dataConnector name data))))
+    (calc : calcProps) :=
     mkmodel 
-      (mkframe (set_add equiv_dec dest (S(Fr(m)))) (set_add equiv_dec (origin,dest) (R(Fr(m)))) (lambda(Fr(m))) (deltaForProp t))
-      (getValFunction N t dest).
-(*   ERICK: talvez seja itenressante também definir toda a função de valoração como um conjunto de pares (estado, prop) *)
+      (mkframe (set_add equiv_dec dest (S(Fr(m)))) (set_add equiv_dec (origin,dest) (R(Fr(m)))) (lambda(Fr(m))) 
+      (getDelta dataMarkups))
+      (getValFunction (statesAndProps (getNewValFunc calc N t dest))).
 
   Definition concatenateModels (m1: model name nat data) (m2: model name nat data) (t: set (dataConnector name data)) 
-    (n: set name) (index : nat):=
+    (n: set name) (index : nat) (dataMarkups : (set (nat * set (dataConnector name data)))) :=
     mkmodel 
       (mkframe (set_union equiv_dec (S(Fr(m1))) (S(Fr(m2)))) (set_union equiv_dec (R(Fr(m1))) (R(Fr(m2)))) 
-        (lambda(Fr(m1))) (deltaForProp t)) (getValFunction n t index).
+        (lambda(Fr(m1))) (getDelta dataMarkups)) (getValFunctionProp n t index).
 
 
   (* The following definition is employed in deriving the model of neg p based on the model for p, 
@@ -1195,55 +1245,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     match setProps with
     | [] => []
     | prop::moreProps => [~ (snd prop)] ++ (negatePropositions moreProps)
-    end.
-
-  (*Passo 1: parametrizar o modelo. A chamada recursiva terá o modelo atual mais o da próxima etapa *)
-
-   Fixpoint getNextmodelStep (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
-    (phi: (formula name data)) (setStates: set nat) :  bool :=
-    (*ERICK: essa função será descontinuada e será substituída pela getModel + uso de singleFormulaVerify com o modelo resultante *)
-    match phi with
-    | proposition _ _ p => singleFormulaVerify (m) phi (t)
-    | diamond t pi p => match pi with
-                        | sProgram pi' =>
-                            getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates))
-                        | star pi' => 
-                            getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates))
-                        | nu pi' => 
-                            getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates)) 
-                        end
-    | box t pi p => match pi with (*ERICK: corrigir*)  
-                        | sProgram pi' => 
-                          getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates))
-                        | star pi' => 
-                          getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates))
-                        | nu pi' => 
-                          getNextmodelStep (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index) (setStates))
-                        end
-    | and a b => getNextmodelStep m n (t) (index) a setStates &&
-                 getNextmodelStep m n (t) (index) b setStates
-    | or a b =>  getNextmodelStep m n (t) (index) a setStates ||
-                 getNextmodelStep m n (t) (index) b setStates
-    | impl a b => (negb (getNextmodelStep m n (t) (index) a setStates)) ||
-                 getNextmodelStep m n (t) (index) b setStates
-    | biImpl a b => ((negb (getNextmodelStep m n (t) (index) a setStates)) ||
-                 getNextmodelStep m n (t) (index) b setStates) && 
-                    ((negb (getNextmodelStep m n (t) (index) b setStates)) ||
-                 getNextmodelStep m n (t) (index) a setStates)
-    | neg a => (getNextmodelStep m n (t) (index) a setStates)
-
     end.
 
   (*Given a set of already visited states and a data markup, we return the corresponding state if it has already been reached*)
@@ -1255,128 +1256,179 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   | visState::moreStates => if (set_eq t (snd(visState))) then Some (fst(visState)) else getVisitedState t moreStates
   end.
 
-  (*The following three definitions are employed to initialize the model's contruction*)
 
-  Definition emptyDelta (state : nat) : set (dataConnector name data):= [].
+  (*Iteration of programs - Useful for the model construction (the standard star verification is done by means of the RTC) *)
 
-  Definition emptyValFunc (state : nat) (prop: nat) := false.
 
-  Definition emptyModel := mkmodel (mkframe [0] [] lambdaForProp (emptyDelta)) (emptyValFunc).
-
-  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
-    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (*setProps: set (nat * nat)*) :=
+  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) (*indexProps: nat*)
+    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc : calcProps) :=
     match phi with
     (*Erick: replicar o mecanismo de estado visitado/não visitado para os outros cenários *)
     | proposition _ _ p => m
     | diamond t' pi p => match pi with
                         | sProgram pi' =>
-                            match (getVisitedState t setStates) with
-                            (* Estado não visitado ainda *)
-                            | None => getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
+                            (*Estado não visitado*)
+                            | None => getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi')))
+                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc)
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates))
+                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
                             (* Estado já visitado *)
-                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))))
-                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
-                                      (setStates)
+                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (a) (*só a aqui eu perco o global index*) p 
+                                      (setStates) calc
                             end
                         | star pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         | nu pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         end
-    | box t' pi p => match pi with (*ERICK: corrigir*)  
+    | box t' pi p => match pi with 
                         | sProgram pi' =>
                             match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
                             (*Estado não visitado*)
-                            | None => getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            | None => getModel ((addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) 
+                                        (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc)(*Esse set_add era apenas setState. Vi que não da certo deixar apenas, pois ele não ve o ultimo caso quando for uma proposição p calcular o delta*))
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates))
+                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
                             (* Estado já visitado *)
-                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))))
-                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
-                                      (setStates)
+                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (a) p 
+                                      (setStates) calc
                             end
                         | star pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         | nu pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         end
-    | and a b => (concatenateModels (getModel m n t index a setStates) (getModel m n t index b setStates) t n index) 
-    | or a b =>  (concatenateModels (getModel m n t index a setStates) (getModel m n t index b setStates) t n index) 
-    | impl a b => (concatenateModels (getModel m n t index a setStates) (getModel m n t index b setStates) t n index) 
-    | biImpl a b => (concatenateModels (getModel m n t index a setStates) (getModel m n t index b setStates) t n index)
-    | neg a => (getModel m n t index a setStates)
+    | and a b => (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates) (*ERICK: setStates em formulas compostas adiionado em 16/01*)
+    | or a b =>  (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates) 
+    | impl a b => (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates) 
+    | biImpl a b => (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates)
+    | neg a => (getModel m n t index a setStates calc)
     end.
 
-Definition constructModel (m: model name nat data)  (n: set name) (t: set (dataConnector name data))  
+Definition constructModel (n: set name) (t: set (dataConnector name data))  
     (phi: (formula name data)) :=
-    getModel m n t 0 phi ([0,t]).
+    getModel (buildPropModel n t 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0).
 
 
 Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
-    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (*setProps: set (nat * nat)*) :=
+    (*indexProps : nat -> transformar isso no global index?*)
+    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc: calcProps) :=
     match phi with
     | proposition _ _ p => setStates
     | diamond t pi p => match pi with
                         | sProgram pi' =>
                             match (getVisitedState t setStates) with
                             (* Estado não visitado ainda *)
-                            | None => getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            | None => getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates))
+                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
                             (* Estado já visitado *)
-                            | Some a => getVisitedStates (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))))
-                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
-                                      (setStates)
+                            | Some a => getVisitedStates (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (a) p 
+                                      (setStates) calc
                             end
                         | star pi' => 
-                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         | nu pi' => 
-                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc 
                         end
     | box t' pi p => match pi with 
                         | sProgram pi' =>
                             match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
                             (* Estado não visitado ainda *)
-                            | None => getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            | None => getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                          (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates))
+                          (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
                             (* Estado já visitado *)
-                            | Some a => getVisitedStates (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))))
-                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
-                                      (setStates)
+                            | Some a => getVisitedStates (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (a) p 
+                                      (setStates) calc
                             end
                         | star pi' => 
-                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         | nu pi' => 
-                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))))
+                            getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates))
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
                         end
-    | and a b => (getVisitedStates m n t index a setStates) ++ (getVisitedStates m n t index b setStates) 
+    | and a b => (getVisitedStates m n t index a setStates calc) ++ (getVisitedStates m n t index b setStates calc) 
     | _ => []
     end.
+
+Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
+    (*indexProps : nat*)
+    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc: calcProps) :=
+    match phi with
+    | proposition _ _ p => calc
+    | diamond t pi p => match pi with
+                        | sProgram pi' =>
+                            match (getVisitedState t setStates) with
+                            (* Estado não visitado ainda *)
+                            | None => getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) (getNewValFunc calc n t (Datatypes.S index))
+                            (* Estado já visitado *)
+                            | Some a => getCalc (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates (getNewValFunc calc n t a))
+                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
+                                      (setStates) calc
+                            end
+                        | star pi' => 
+                            getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                        | nu pi' => 
+                            getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc 
+                        end
+    | box t' pi p => match pi with 
+                        | sProgram pi' =>
+                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
+                            (* Estado não visitado ainda *)
+                            | None => getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                                      n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                          (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) (getNewValFunc calc n t (Datatypes.S index))
+                            (* Estado já visitado *)
+                            | Some a => getCalc (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates (getNewValFunc calc n t a))
+                                      n (f(t)(program2SimpProgram (pi'))) (index) p 
+                                      (setStates) calc
+                            end
+                        | star pi' => 
+                            getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                        | nu pi' => 
+                            getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
+                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                        end
+(*     | and a b => (getCalc m n t index a setStates calc) ++ (getCalc m n t index b setStates calc)  *)
+    | _ => calc
+    end.
+
 
   (*ERICK: pontos abaixo serão corrigidos após reunião em 23/12. Preciso também tirar o modelo da definição acima (i.e.,
     retornar o modelo caso a fórmula seja ou não aceita - ok*)
 
   (* Observações sobre esta abordagem: 
-     - não constrói explicitamente o conjunto R alcançado. -> Em andamento
+     - não constrói explicitamente o conjunto R alcançado. -> Em andamento (concluído)
         -eu particularmente não vejo problemas, pois estados aqui são "labeled"  -> Bruno indica que isso deve ser sim construído. Em andamento
      - não considera comportamento de operadores de programa star e nu. Isso hoje é processado apenas pelo singleFormulaVerify
      - preciso achar um balanço entre a chamada da construção do modelo e a chamada de singleFormulaVerify
@@ -1384,13 +1436,14 @@ Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (dataC
         - seria a solução tirar a chamda para singleFormulaVerify dali e chamar a getNextmodelStep?
      - Temos que montar o R namoral do modelo resultante. Caso contrário, operadores de programa não irão funcionar. -> Em andamento
         - esse tópico conflita com o primeiro tópico, uma vez que não temos esta ação, mas é teoricamente endereçado pelo segundo tópico.
-     - A forma que estamos implementando a definiçãod e propos como um índice natural não parece ser tão intuitiva aqui: o sistema
+     - A forma que estamos implementando a definição de props como um índice natural não parece ser tão intuitiva aqui: o sistema
       vai listando numericametne como um índice global qual o número de uma determinada proposição. Cabe ao usuário saber qual o número da proposição denota o que, uma vez
       que tanto estados quanto proposições são tratados como números. -OK, ver pontos a ajustar "1"
         - solução: podemos criar uma estrutura "record mchkState" que receberia info adicional baseado no estado atual do modelo (derivada do "T" daquele momento)
           e armazenaria isso, de forma que seria fácil identificar o estado do modelo.
      - Talvez o problema de não criar o modelo certinho possa ser endereçado chamando para os casos de programa uma função que concatena dois modelos,
      pegando o esatdo atual "X" e levando de "X" para os "Y" encontrados no "novo" modelo em R e adicionando os "Y" no conjunto do modelo gerado. - Isso ai.
+    - OBS: tem algo estranho com a construção da função de valoração - Em andamento.
 
     Pontos a ajustar:
     "1" - Proposições precisam ser únicas por estado, tal como numa hash. O programa atualmente as conta baseadas num índice. a ideia é ir adicionando as props

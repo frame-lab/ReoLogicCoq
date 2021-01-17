@@ -365,7 +365,7 @@ Eval compute in singleFormulaVerify
 Eval compute in buildValidPropositions [D] t 0.
 
 (*Tests for composite formula - 09/11*)
-
+(* 
 Eval compute in (getNextmodelStep testModel [A ; B ; C ; D ; E ; F ; G] t 0
      (box t pi (proposition ports nat 1))) [0]. 
 
@@ -374,26 +374,27 @@ Eval compute in getNextmodelStep (addInfoToModel testModel 0 (Datatypes.S 0) [A 
                            (f(t)(program2SimpProgram (reoProg SequencerProgram []))))
                             [A ; B ; C ; D ; E ; F ; G] (f(t)(program2SimpProgram (reoProg SequencerProgram []))) (Datatypes.S 0) (proposition ports nat 0) 
                             (set_add equiv_dec (Datatypes.S 0) ([0])).
+ *)
+Definition grete := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi (proposition ports nat 0)) [(0,t)] (mkcalcProps [] 0). (*Era emptyModel*)
 
-Definition grete := getModel (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
-  (box t pi (proposition ports nat 0)) []. 
+Eval compute in grete. (*Problema 1: qqr estado tá com o delta do estado atual - resolvido *)
 
-Eval compute in grete. (*Problema 1: qqr estado tá com o delta do estado atual *)
+Eval compute in delta(Fr(grete)).
 
-Eval compute in delta(Fr(grete)) 1.
-
-Eval compute in singleFormulaVerify (grete) (box t pi (proposition ports nat 666)) t. 
+Eval compute in singleFormulaVerify (grete) (proposition ports nat 0) t. 
 
 (* 31/12 - O problema aqui ta no estado inicial do modelo
 induzido por t em grete. Isso é vazio por causa da relação delta não compreender o todo, 
   apenas o estado atual (do jeito que tá hoje *)
 
 
-Eval compute in getValFunction [A ; B ; C ; D ; E ; F ; G] 
+Eval compute in getValFunctionProp [A ; B ; C ; D ; E ; F ; G] 
     (f(t)(program2SimpProgram (reoProg SequencerProgram []))) 1.
 
-Eval compute in  V(addInfoToModel (emptyModel ports nat) 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
-                           (f(t)(program2SimpProgram (reoProg SequencerProgram [])))).
+Eval compute in  
+  V(addInfoToModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
+                           (f(t)(program2SimpProgram (reoProg SequencerProgram []))) [] (mkcalcProps [] 0)) .
 
 (*O que o capeta do singleFormulaVerify tá fazendo?*)
 Eval compute in getState grete (f(t)(program2SimpProgram (reoProg SequencerProgram []))). 
@@ -401,17 +402,52 @@ Eval compute in getState grete (f(t)(program2SimpProgram (reoProg SequencerProgr
 ERICK: para funcionar corretamente, toda a função de transição deverá ser armazenada, por causa da getState na definição de
 SingleFormulaVerify*)
 
-
-
-Definition grete2 := getModel (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
+Definition grete2 := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] t 0
   (box t pi(box t pi(box t pi(box t pi
     (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) [(0,t)].
 
 Eval compute in grete2.
 
-Eval compute in getVisitedStates (emptyModel ports nat) [A ; B ; C ; D ; E ; F ; G] t 0
-  (box t pi(box t pi((proposition ports nat 0))))
+Eval compute in constructModel [A ; B ; C ; D ; E ; F ; G] t
+  (box t pi(box t pi(box t pi(box t pi
+    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))).
+
+Definition grete3 := constructModel [A ; B ; C ; D ; E ; F ; G] t
+  ((diamond t pi(diamond t pi(diamond t pi
+    (diamond t pi(diamond t pi(diamond t pi(diamond t pi (proposition ports nat 0))))))))).
+
+Eval compute in getState grete3 (f(t)(program2SimpProgram (reoProg SequencerProgram []))).
+
+Eval compute in V(grete3) 7.
+
+(* More Tests - 13012021 *)
+
+Definition grete4 := constructModel [A ; B ; C ; D ; E ; F ; G] t
+  (diamond t pi (proposition ports nat 0)).
+
+Eval compute in singleFormulaVerify (grete4) (box t pi (proposition ports nat 1)) t. (*-> tá somando 1 no index...*)
+
+(* End tests - 13012021 *)
+
+
+Eval compute in singleFormulaVerify (grete3)  ((diamond t pi(diamond t pi(diamond t pi
+    (diamond t pi(diamond t pi(diamond t pi(diamond t pi (proposition ports nat 0))))))))) t. 
+
+Eval compute in getVisitedStates (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
+    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0)))))))))))
   [(0,t)].
+
+Definition grete5 := constructModel [A ; B ; C ; D ; E ; F ; G] t
+    (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
+    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))))). (* não tá voltando quando deveria*)
+
+Eval compute in grete5.
+
+Eval compute in getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] t 0
+  (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
+    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0)))))))))))
+  [(0,t)] (mkcalcProps [] 0).
 
 (*PERGUNTA: Nested formulas devem já vir com o f(t) na formula?
   Adicionar um ' no t interno na clausula da modalidade na função resolve o problema.
