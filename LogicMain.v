@@ -321,41 +321,55 @@ Defined.
   - intros. induction s. reflexivity. destruct H2. simpl. simpl in H2. rewrite andb_lazy_alt in H2.
   apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2.
   destruct H2. destruct IHs. left. reflexivity. auto. intros. rewrite H3 in H2. inversion H2. inversion H2.
-  Qed.
+  Defined.
+
+  Fixpoint subSubset (s: set (set dataConnector)) (s2 : (set (set dataConnector))) := 
+    match s,s2 with
+    | a::t,b::y => subset a b && subSubset t y
+    | _,_ => true
+    end.
+
 
   (* Auxiliary function for goTo a b and dataPorts a x -> dataPorts b x *)
   Fixpoint port2port (dataSink : goMarks) (dataSource : set dataConnector) :=
   match dataSource with 
-  | [] => []
+  | [] => None
   | ax::acc => match ax,dataSink with
-               | dataPorts a x, goTo y b => if equiv_decb a y then [dataPorts b x] else port2port dataSink acc
+               | dataPorts a x, goTo y b => if equiv_decb a y then (Some (dataPorts b x)) else port2port dataSink acc
                | _, _ => port2port dataSink acc
                 end
   end.
 
-
- Fixpoint fire (t: set dataConnector) (s : set goMarks) : set dataConnector :=
+ (*ERICK : ALTERADO DE SET DATACONNECTOR PARA SET (SET DATACONNECTOR) *)
+ Fixpoint fire (t: set dataConnector) (s : set goMarks) (acc: set dataConnector) : set (set dataConnector) :=
     match s with
-    | [] => []
+    | [] =>  match acc with
+            | [] => []
+            | x::y => [acc]
+            end
     | ax::l => match ax with
               | goTo a b => if (existsb (fun x : (dataConnector) => match x with
                                         | dataPorts name1 data => (equiv_decb name1 a)
                                         | _ => false
                                         end) (t)) then 
               (*busco o item de dado em t e transformo pro formato adequado*)
-                                        (port2port (goTo a b)(filter(fun x : (dataConnector) => match x with
-                                        | dataPorts name1 data => (equiv_decb name1 a)
-                                        | _ => false 
-                                        end) (t)))++(fire t l) else fire t l
+                                            match (port2port (goTo a b)(filter(fun x : (dataConnector) => match x with
+                                            | dataPorts name1 data => (equiv_decb name1 a)
+                                            | _ => false 
+                                            end) (t))) with
+                                            | None => (fire t l acc) 
+                                            | Some x => (fire t l (x::acc)) 
+                                            end
+                                        else fire t l acc
 
               | goFifo a x b => if (existsb (fun x : (dataConnector) => match x with
                                         | dataPorts name1 data => (equiv_decb name1 a)
                                         | _ => false
-                                        end) (t)) then (fifoData a x b)::(fire t l) else fire t l
+                                        end) (t)) then (fire t l ((fifoData a x b)::acc)) else fire t l acc
               | goFromFifo a x b => if (existsb (fun x : (dataConnector) => match x with
                                         | fifoData name1 data name2 => (equiv_decb name1 a)
                                         | _ => false
-                                        end) (t)) then (dataPorts b x)::(fire t l) else fire t l
+                                        end) (t)) then (fire t l ((dataPorts b x)::acc)) else fire t l acc
               end
    end. 
 
@@ -459,16 +473,16 @@ Defined.
 
   Definition halt (a b: name) (s': set program) := haltAux a b s' (length s').
 
-  Fixpoint go (t : set dataConnector) (s: set program) (k: nat) (acc : set goMarks) : set dataConnector := 
+  Fixpoint go (s: set program) (k: nat) (acc : set goMarks) (t : set dataConnector) : set (set dataConnector) := 
     (*obs1: a manipulação de s no caso dos blocks vai dar problema 
     (coq não permite a manipulação do argumento decrescente em definições fix)
     ideia: iterar sobre o tamanho de s*)
     (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de parse
      Ou seja, acc fica livre de repetição por construção.*)
     match k with
-    | 0 => fire t acc
+    | 0 => fire t acc []
     | Datatypes.S n => match s with
-             | [] => fire t acc
+             | [] => fire t acc []
              | prog::s' => match prog with
                         | to a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
                                         | dataPorts name1 data => (equiv_decb name1 a)
@@ -480,11 +494,11 @@ Defined.
                                             | goFromFifo name1 data name2 => (equiv_decb name2 b)
                                             end) (acc)))
                                          then  (*caso 1*)
-                                            (go t s' n (acc++[goTo a b]))
+                                            (go s' n (acc++[goTo a b]) t)
                                          else  (*caso 2 - existe alguem em acc que possui o mesmo sink*)
-                                            go t s' n ((swap acc (goTo a b))++[goTo a b]) ++ (go t s' n (acc))
+                                             (go s' n (swap acc (goTo a b)) t(*++[goTo a b]*)) ++ (go s' n (acc) t)
                                       else 
-                                      (go t s' n acc)
+                                      (go s' n acc t)
                          | asyncTo a b => if (existsb (fun x : (dataConnector) => match x with (*a lossySync b *)
                                         | dataPorts name1 name2 => (equiv_decb name1 a)
                                         | _ => false
@@ -495,11 +509,11 @@ Defined.
                                             | goFromFifo name1 data name2 => (equiv_decb name2 b)
                                             end) (acc))) 
                                           then (*caso 1*)
-                                            (go t s' n (acc++[goTo a b])) ++ (go t s' n (acc++[goTo a a]))
+                                            (go s' n (acc++[goTo a b]) t) ++ (go s' n (acc++[goTo a a])  t)
                                          else (*caso 2 - existe alguem em acc que possui o mesmo sink*)
-                                            (go t s' n ((swap acc (goTo a b))++[goTo a b])) ++ (go t s' n (acc))
+                                            (go s' n ((swap acc (goTo a b))++[goTo a b]) t) ++ (go s' n (acc) t)
                                       else 
-                                      (go t s' n acc)
+                                      (go s' n acc t)
                         | fifoAlt a b => if (existsb (fun x : (dataConnector) => match x with (*a fifo b *)
                                         | fifoData name1 data name2 => (equiv_decb name1 a)
                                         | _ => false
@@ -510,17 +524,17 @@ Defined.
                                             | goFromFifo name1 data name2 => (equiv_decb name2 b)
                                             end) (acc))) 
                                           then (*caso 3 - existe alguem com o mesmo sink*)
-                                            (go t s' n (acc++dataConnectorToGoMarksFifo(t))) ++ (go t s' n (acc))
+                                            (go s' n (acc++dataConnectorToGoMarksFifo(t)) t) ++ (go s' n (acc) t)
                                          else (*caso 2 - sem portas com mesmo sink em acc mas com axb em t *)
-                                            (go t s' n (acc++dataConnectorToGoMarksFifo(t)))
+                                            (go s' n (acc++dataConnectorToGoMarksFifo(t)) t)
                                       else
                                       if (existsb (fun x : (dataConnector) => match x with  (* caso 1 *)
                                         | fifoData name1 data name2 => (equiv_decb name1 a)
                                         | dataPorts name1 name2 => (equiv_decb name1 a)
                                         end) (t)) then
-                                        (go t s' n (acc++(dataConnectorToGoMarksPorts t (fifoAlt a b)))) (* caso 1 *)
+                                        (go s' n (acc++(dataConnectorToGoMarksPorts t (fifoAlt a b))) t) (* caso 1 *)
                                       else
-                                      (go t s' n acc) 
+                                      (go s' n acc t) 
                         | SBlock a b => if (existsb (fun x : (dataConnector) => match x with (* ax \succ t *)
                                           | dataPorts name1 data => (equiv_decb name1 a)
                                           | _ => false
@@ -535,9 +549,9 @@ Defined.
                                           | dataPorts name1 data => (equiv_decb name1 b) 
                                           | _ => false
                                           end) t) then (*caso 1 : existe dataItem p a e p b ou pra ningúem*)
-                                            (go t s' n acc)
+                                            (go s' n acc t)
                                           else
-                                            (go t (halt a b s') n acc)
+                                            (go (halt a b s') n acc t)
                         | ABlock a b => if (existsb (fun x : (dataConnector) => match x with (* ax \succ t *)
                                           | dataPorts name1 data => (equiv_decb name1 a)
                                           | _ => false
@@ -552,36 +566,139 @@ Defined.
                                           | dataPorts name1 data => (equiv_decb name1 b) 
                                           | _ => false
                                           end) t) then (*caso 1 : existe dataItem p a e p b ou pra ningúem*)
-                                            (go t s' n acc)
+                                            (go s' n acc t)
                                           else
-                                            (go t (halt a b s') n acc)
+                                            (go (halt a b s') n acc t)
+                         end
+            end
+    end.
+
+
+  (*20/01/2021 - test*)
+
+  Fixpoint go' (s: set program) (k: nat) (acc : set goMarks) (t : set dataConnector) := 
+    (*obs1: a manipulação de s no caso dos blocks vai dar problema 
+    (coq não permite a manipulação do argumento decrescente em definições fix)
+    ideia: iterar sobre o tamanho de s*)
+    (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de parse
+     Ou seja, acc fica livre de repetição por construção.*)
+    match k with
+    | 0 => acc
+    | Datatypes.S n => match s with
+             | [] => acc
+             | prog::s' => match prog with
+                        | to a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
+                                        | dataPorts name1 data => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                          if negb((existsb (fun x : goMarks => match x with
+                                            | goTo name1 name2 => (equiv_decb name2 b) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            end) (acc)))
+                                         then  (*caso 1*)
+                                            (go' s' n (acc++[goTo a b]) t)
+                                         else  (*caso 2 - existe alguem em acc que possui o mesmo sink*)
+                                             (go' s' n (swap acc (goTo a b)) t(*++[goTo a b]*)) ++ (go' s' n (acc) t)
+                                      else 
+                                      (go' s' n acc t)
+                         | asyncTo a b => if (existsb (fun x : (dataConnector) => match x with (*a lossySync b *)
+                                        | dataPorts name1 name2 => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)) then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                          if negb((existsb (fun x : goMarks => match x with
+                                            | goTo name1 name2 => (equiv_decb name2 b) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            end) (acc))) 
+                                          then (*caso 1*)
+                                            (go' s' n (acc++[goTo a b]) t) ++ (go' s' n (acc++[goTo a a])  t)
+                                         else (*caso 2 - existe alguem em acc que possui o mesmo sink*)
+                                            (go' s' n ((swap acc (goTo a b))++[goTo a b]) t) ++ (go' s' n (acc) t)
+                                      else 
+                                      (go' s' n acc t)
+                        | fifoAlt a b => if (existsb (fun x : (dataConnector) => match x with (*a fifo b *)
+                                        | fifoData name1 data name2 => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)) then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                          if negb((existsb (fun x : goMarks => match x with
+                                            | goTo name1 name2 => (equiv_decb name2 b) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            end) (acc))) 
+                                          then (*caso 3 - existe alguem com o mesmo sink*)
+                                            (go' s' n (acc++dataConnectorToGoMarksFifo(t)) t) ++ (go' s' n (acc) t)
+                                         else (*caso 2 - sem portas com mesmo sink em acc mas com axb em t *)
+                                            (go' s' n (acc++dataConnectorToGoMarksFifo(t)) t)
+                                      else
+                                      if (existsb (fun x : (dataConnector) => match x with  (* caso 1 *)
+                                        | fifoData name1 data name2 => (equiv_decb name1 a)
+                                        | dataPorts name1 name2 => (equiv_decb name1 a)
+                                        end) (t)) then
+                                        (go' s' n (acc++(dataConnectorToGoMarksPorts t (fifoAlt a b))) t) (* caso 1 *)
+                                      else
+                                      (go' s' n acc t) 
+                        | SBlock a b => if (existsb (fun x : (dataConnector) => match x with (* ax \succ t *)
+                                          | dataPorts name1 data => (equiv_decb name1 a)
+                                          | _ => false
+                                          end) t) && (existsb (fun x : (dataConnector) => match x with (* bx \succ t *)
+                                          | dataPorts name1 data => (equiv_decb name1 b) 
+                                          | _ => false
+                                          end) t) ||
+                                          negb((existsb (fun x : (dataConnector) => match x with 
+                                          | dataPorts name1 data => (equiv_decb name1 a)
+                                          | _ => false
+                                          end) t)) && negb(existsb (fun x : (dataConnector) => match x with 
+                                          | dataPorts name1 data => (equiv_decb name1 b) 
+                                          | _ => false
+                                          end) t) then (*caso 1 : existe dataItem p a e p b ou pra ningúem*)
+                                            (go' s' n acc t)
+                                          else
+                                            (go' (halt a b s') n acc t)
+                        | ABlock a b => if (existsb (fun x : (dataConnector) => match x with (* ax \succ t *)
+                                          | dataPorts name1 data => (equiv_decb name1 a)
+                                          | _ => false
+                                          end) t) && (existsb (fun x : (dataConnector) => match x with (* bx \succ t *)
+                                          | dataPorts name1 data => (equiv_decb name1 b) 
+                                          | _ => false
+                                          end) t) ||
+                                          negb((existsb (fun x : (dataConnector) => match x with 
+                                          | dataPorts name1 data => (equiv_decb name1 a)
+                                          | _ => false
+                                          end) t)) && negb(existsb (fun x : (dataConnector) => match x with 
+                                          | dataPorts name1 data => (equiv_decb name1 b) 
+                                          | _ => false
+                                          end) t) then (*caso 1 : existe dataItem p a e p b ou pra ningúem*)
+                                            (go' s' n acc t)
+                                          else
+                                            (go' (halt a b s') n acc t)
                          end
             end
     end.
   
   (* We define f as the top-level function to be used as follows *)
-  Definition f (t: set dataConnector) (pi: set connector) : set dataConnector := 
-    go t (parse pi []) (length (parse pi [])) []. (* (length (parse pi [])) era (length pi) *)
+  Definition f (t: set (set dataConnector)) (pi: set connector) (* : set (set dataConnector) *) := 
+   flat_map (go (parse pi []) (length (parse pi [])) []) t. (* (length (parse pi [])) era (length pi) *)
 
   (* We define the computation of iterations bounded by repetition as follows. *)
   (* It returns the data flow of the connector which immediately preceeds a flow which have already happened.*)
 
-  Definition boundedIteration : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
-    set (set dataConnector) -> (set dataConnector)  :=
+  Definition boundedIteration : set (set dataConnector) ->  set connector -> nat -> (*set dataConnector -> *)
+    set ( set (set dataConnector)) -> (set (set dataConnector))  :=
     fix rec t pi iterations resp :=
       match iterations with
       | 0 => last resp t
-      | Datatypes.S n => if existsb (subset t) resp
+      | Datatypes.S n => if existsb (subSubset t) resp
                          then (last resp t) 
                          else (rec (f t pi) pi n (resp ++ [t]))
       end.
 
-  Definition boundedIterationTrace : set dataConnector ->  set connector -> nat -> (*set dataConnector -> *)
-    set (set dataConnector) -> (set (set dataConnector))  :=
+  Definition boundedIterationTrace : set (set dataConnector) ->  set connector -> nat -> (*set dataConnector -> *)
+    set (set (set dataConnector)) -> (set (set (set dataConnector)))  :=
     fix rec t pi iterations resp :=
       match iterations with
       | 0 => resp 
-      | Datatypes.S n => if existsb (subset t) resp then [last resp t] else (rec (f t pi) pi n (resp ++ [t]))
+      | Datatypes.S n => if existsb (subSubset t) resp then [last resp t] else (rec (f t pi) pi n (resp ++ [t]))
       end.
 
   (** Syntatic definitions **)
@@ -706,10 +823,12 @@ Defined.
   Definition RTC (m:model) : set (state * state) :=
    set_union equiv_dec (R(Fr(m))) (set_union equiv_dec (getTransitive m) (getReflexive m)).
 
+  (********************* TEMPORARIAMENTE DESATIVADO PARA TESTES NÃO DETERMINISTICOS *****************************)
+
   (*We recover the states reached by means of \nu.pi *)
 
-  Definition getNuPiReachedState (m:model) (t: set dataConnector) (reoConnector: set connector) :=
-    getState (m) (boundedIteration t reoConnector (length reoConnector * 2) []).
+  Definition getNuPiReachedState (m:model) (t: set (set dataConnector)) (reoConnector: set connector) :=
+   flat_map (getState (m)) (boundedIteration t reoConnector (length reoConnector * 2) []).
 
   (* The notion of diamond and box satisfaction is defined as follows *)
 
@@ -801,46 +920,46 @@ Defined.
                   | nu reo => match p' with
                                    | proposition p'' => 
                                        boxSatisfactionPi (m) (p'')
-                                       (getNuPiReachedState m t (program2SimpProgram reo))
+                                       (getNuPiReachedState m [t] (program2SimpProgram reo))
                                    | box t' pi' p'' => forallb (singleModelStep m p')
                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                          (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))
                                    | and a b => (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) &&
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))) &&
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | or a b => (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | neg a => negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | impl a b => (negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | biImpl a b => ((negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) &&
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) &&
                                                    ((negb (forallb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))))
                                  end
                      end
     | diamond t pi p' => match pi with
@@ -909,46 +1028,46 @@ Defined.
                   | nu reo => match p' with
                                    | proposition p'' => 
                                        diamondSatisfactionPi (m) (p'')
-                                       (getNuPiReachedState m t (program2SimpProgram reo))
+                                       (getNuPiReachedState m [t] (program2SimpProgram reo))
                                    | box t' pi' p'' => forallb (singleModelStep m p')
                                           (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))
                                    | diamond t' pi' p'' => existsb (singleModelStep m p')
                                           (flat_map (retrieveRelatedStatesFromV (RTC(m))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))
                                    | and a b => (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) &&
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))) &&
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | or a b => (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | neg a => negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | impl a b => (negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))
                                    | biImpl a b => ((negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) &&
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) &&
                                                    ((negb (existsb (singleModelStep m b)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo))))) ||
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
-                                                    (getNuPiReachedState m t (program2SimpProgram reo)))))
+                                                    (getNuPiReachedState m [t] (program2SimpProgram reo)))))
                                    end
                   end
       end.
@@ -1150,8 +1269,8 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | [] => []
     end.
 
-  Definition buildValidPropositions (N: set name) (t: set (dataConnector name data)) 
-    (index: nat) : set (nat * Prop) :=
+  Definition buildValidPropositions (N: set name) (index: nat) (t: set (dataConnector name data)) 
+     : set (nat * Prop) :=
     ((flat_map(retrieveTwoPortsProp index t) (t)) ++
     (flat_map(retrieveSinglePortProp t index) (N))) ++
     (flat_map(retrieveFIFOdataProp index t) t).
@@ -1168,7 +1287,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     s ;estado a avaliar (pela assinatura da função. A grosso modo, S = index)
     p : prop -> verificar*)
    Definition getValFunctionProp (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:nat) :=
-    getProp ((buildValidPropositions N t index)) p.
+    getProp ((buildValidPropositions N index t )) p.
 
   Definition setStateForProp (s: nat) := [s].
 
@@ -1188,10 +1307,10 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (*Auxiliary function employed by the function below it*)
 
-  Fixpoint getDelta (dataMarkups : set (nat * set (dataConnector name data))) (state: nat) :=
+  Fixpoint getDelta (dataMarkups : set (nat * set (set (dataConnector name data)))) (state: nat) :=
     match dataMarkups with
     | [] => []
-    | dataMarkup::moreData => if fst(dataMarkup) == state then snd(dataMarkup) else getDelta moreData state
+    | dataMarkup::moreData => if fst(dataMarkup) == state then (hd [] (snd(dataMarkup))) else getDelta moreData state
     end.
 
   (*We may also construct composite models by joining states and the relation between them *)
@@ -1220,23 +1339,24 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | prop::moreProps => set_union equiv_dec [fst(prop)] (getIndexOfProps moreProps)
     end.
 
-  Definition getNewValFunc (calc: calcProps) (N: set name) (t:set (dataConnector name data)) (state: nat) :=
-  mkcalcProps (set_add equiv_dec (state,getIndexOfProps(buildValidPropositions N t (propCounter(calc)))) (statesAndProps calc)) 
-              (propCounter(calc) + length (getIndexOfProps(buildValidPropositions N t state))).
+  Definition getNewValFunc (calc: calcProps) (N: set name) (t:set (set (dataConnector name data))) (state: nat) :=
+  mkcalcProps (set_add equiv_dec (state,getIndexOfProps(flat_map (buildValidPropositions N (propCounter(calc))) t)) (statesAndProps calc)) 
+              (propCounter(calc) + length (getIndexOfProps(flat_map (buildValidPropositions N state) t))).
 
    Definition addInfoToModel (m: model name nat data) (origin:nat) (dest: nat) 
-    (N: set name) (t:set (dataConnector name data)) (dataMarkups : (set (nat * set (dataConnector name data))))
+    (N: set name) (t:set (set (dataConnector name data))) (dataMarkups : (set (nat * set (set (dataConnector name data)))))
     (calc : calcProps) :=
     mkmodel 
       (mkframe (set_add equiv_dec dest (S(Fr(m)))) (set_add equiv_dec (origin,dest) (R(Fr(m)))) (lambda(Fr(m))) 
       (getDelta dataMarkups))
       (getValFunction (statesAndProps (getNewValFunc calc N t dest))).
 
-  Definition concatenateModels (m1: model name nat data) (m2: model name nat data) (t: set (dataConnector name data)) 
-    (n: set name) (index : nat) (dataMarkups : (set (nat * set (dataConnector name data)))) :=
+  Definition concatenateModels (m1: model name nat data) (m2: model name nat data) (t: set (set(dataConnector name data))) 
+    (n: set name) (index : nat) (dataMarkups : (set (nat * set (set (dataConnector name data))))) :=
+    (*ERICK: Corrigir o uso de t na getValFunctionProp na função abaixo*)
     mkmodel 
       (mkframe (set_union equiv_dec (S(Fr(m1))) (S(Fr(m2)))) (set_union equiv_dec (R(Fr(m1))) (R(Fr(m2)))) 
-        (lambda(Fr(m1))) (getDelta dataMarkups)) (getValFunctionProp n t index).
+        (lambda(Fr(m1))) (getDelta dataMarkups)) (getValFunctionProp n (hd [] t) index).
 
 
   (* The following definition is employed in deriving the model of neg p based on the model for p, 
@@ -1249,19 +1369,17 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (*Given a set of already visited states and a data markup, we return the corresponding state if it has already been reached*)
 
-  Fixpoint getVisitedState (t :set (dataConnector name data)) 
-      (visStates: set (nat * set (dataConnector name data))) : option nat :=
+  Fixpoint getVisitedState (t : set (set (dataConnector name data))) 
+      (visStates: set (nat * set (set (dataConnector name data)))) : option nat :=
   match visStates with
   | [] => None
   | visState::moreStates => if (set_eq t (snd(visState))) then Some (fst(visState)) else getVisitedState t moreStates
   end.
 
-
   (*Iteration of programs - Useful for the model construction (the standard star verification is done by means of the RTC) *)
 
-
-  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) (*indexProps: nat*)
-    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc : calcProps) :=
+  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat) (*indexProps: nat*)
+    (phi: (formula name data)) (setStates: set (nat * set (set (dataConnector name data)))) (calc : calcProps) :=
     match phi with
     (*Erick: replicar o mecanismo de estado visitado/não visitado para os outros cenários *)
     | proposition _ _ p => m
@@ -1316,19 +1434,19 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | neg a => (getModel m n t index a setStates calc)
     end.
 
-Definition constructModel (n: set name) (t: set (dataConnector name data))  
+Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
     (phi: (formula name data)) :=
-    getModel (buildPropModel n t 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0).
+    getModel (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0).
 
 
-Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
+Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (set(dataConnector name data))) (index:nat) 
     (*indexProps : nat -> transformar isso no global index?*)
-    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc: calcProps) :=
+    (phi: (formula name data)) (setStates: set (nat * set (set (dataConnector name data)))) (calc: calcProps) :=
     match phi with
     | proposition _ _ p => setStates
-    | diamond t pi p => match pi with
+    | diamond t' pi p => match pi with
                         | sProgram pi' =>
-                            match (getVisitedState t setStates) with
+                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
                             (* Estado não visitado ainda *)
                             | None => getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
@@ -1372,14 +1490,14 @@ Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (dataC
     | _ => []
     end.
 
-Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (dataConnector name data)) (index:nat) 
+Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (set(dataConnector name data))) (index:nat) 
     (*indexProps : nat*)
-    (phi: (formula name data)) (setStates: set (nat * set (dataConnector name data))) (calc: calcProps) :=
+    (phi: (formula name data)) (setStates: set (nat * set (set (dataConnector name data)))) (calc: calcProps) :=
     match phi with
     | proposition _ _ p => calc
-    | diamond t pi p => match pi with
+    | diamond t' pi p => match pi with
                         | sProgram pi' =>
-                            match (getVisitedState t setStates) with
+                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
                             (* Estado não visitado ainda *)
                             | None => getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                                       n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
@@ -1447,8 +1565,8 @@ Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (dataConnector 
 
     Pontos a ajustar:
     "1" - Proposições precisam ser únicas por estado, tal como numa hash. O programa atualmente as conta baseadas num índice. a ideia é ir adicionando as props
-      numa lista e sempre contando o tamanho da lista p passar para a getProp.*)
-     
+      numa lista e sempre contando o tamanho da lista p passar para a getProp. *)
+
   End ModelExecution.
   End ReoLogicCoq.
 
