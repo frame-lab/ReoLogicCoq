@@ -329,8 +329,6 @@ Definition pi := sProgram (reoProg SequencerProgram []).
 
 Definition piStar' := star (reoProg SequencerProgram []).
 
-Definition nuPi := nu (reoProg SequencerProgram []).
-
 Definition t := [dataPorts D 1].
 
 Eval compute in singleFormulaVerify sequencerModel
@@ -364,129 +362,86 @@ Eval compute in singleFormulaVerify
 
 Eval compute in buildValidPropositions [D] 0 t.
 
-(*Tests for composite formula - 09/11*)
-(* 
-Eval compute in (getNextmodelStep testModel [A ; B ; C ; D ; E ; F ; G] t 0
-     (box t pi (proposition ports nat 1))) [0]. 
+(* Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
+    (phi: (formula name data)) :=
+    getModel (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0). *)
 
-(* verificar o modelo resultate da geringonça abaixo*)
-Eval compute in getNextmodelStep (addInfoToModel testModel 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
-                           (f(t)(program2SimpProgram (reoProg SequencerProgram []))))
-                            [A ; B ; C ; D ; E ; F ; G] (f(t)(program2SimpProgram (reoProg SequencerProgram []))) (Datatypes.S 0) (proposition ports nat 0) 
-                            (set_add equiv_dec (Datatypes.S 0) ([0])).
- *)
-Definition grete := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 0
-  (box t pi (proposition ports nat 0)) [(0,[t])] (mkcalcProps [] 0). (*Era emptyModel*)
+(***new tests for model - 31/01/2021 ***)
 
-Eval compute in grete. (*Problema 1: qqr estado tá com o delta do estado atual - resolvido *)
+Definition N := [A; B; C; D; E; F; G].
 
-Eval compute in delta(Fr(grete)).
+Definition calc :=  (mkcalcProps [] 0).
 
-Eval compute in singleFormulaVerify (grete) (proposition ports nat 0) t. 
+(*Foco no eval abaixo. Ele vai te dar dicas p sair desse buraco*)
+Eval compute in processIntermediateStep (buildPropModel N (hd [] [t]) 0) 0 N 
+    [(0,[dataPorts D 1])] (mkcalcProps [] 0) 
+    (getNewIndexesForStates (f([t])(program2SimpProgram (reoProg SequencerProgram []))) 
+    [(0, [dataPorts D 1])] 1).
 
-(* 31/12 - O problema aqui ta no estado inicial do modelo
-induzido por t em grete. Isso é vazio por causa da relação delta não compreender o todo, 
-  apenas o estado atual (do jeito que tá hoje *)
+Eval compute in processGeneralStep (buildPropModel N (hd [] [t]) 0) N 
+    [(0,[dataPorts D 1])] (mkcalcProps [] 0) 
+    (getNewIndexesForStates [t] [(0,[dataPorts D 1])] 0) 
+    ((* program2SimpProgram *) (reoProg SequencerProgram [])) 1.
 
-Eval compute in  
-  V(addInfoToModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 0 (Datatypes.S 0) [A ; B ; C ; D ; E ; F ; G]
-                           (f([t])(program2SimpProgram (reoProg SequencerProgram []))) [] (mkcalcProps [] 0)) .
+Definition testFuck'1 := Eval compute in processGeneralStep (buildPropModel N (hd [] [t]) 0) N 
+    [(0,[dataPorts D 1])] (mkcalcProps [] 0) 
+    (getNewIndexesForStates [t] [(0,[dataPorts D 1])] 0) 
+    ((* program2SimpProgram *) (reoProg SequencerProgram [])) 
+    ((calculateAmountNewStates (getNewIndexesForStates [t] [(0,[dataPorts D 1])] 0) 0)) (*Index era 1*).
 
-(*O que o capeta do singleFormulaVerify tá fazendo?*)
-(* Eval compute in getState grete (f([t])(program2SimpProgram (reoProg SequencerProgram []))).  *)
-(*O delta de grete tá cagado. Na real, tá certo. O probelma é que isso tá dando true, quando não devia.
-ERICK: para funcionar corretamente, toda a função de transição deverá ser armazenada, por causa da getState na definição de
-SingleFormulaVerify*)
+Eval compute in ((calculateAmountNewStates (getNewIndexesForStates [t] [(0,[dataPorts D 1])] 0) 0)).
 
-Definition grete2 := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 0
-  (box t pi(box t pi(box t pi(box t pi
-    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) [(0,[t])].
+Eval compute in testFuck'1.
+
+
+Definition testFuck'2 := Eval compute in processGeneralStep (fst(testFuck'1)) N 
+    [(0,[dataPorts D 1]);(1,[fifoData D 1 E])] (mkcalcProps [] 0) 
+    (getNewIndexesForStates (f([t])(program2SimpProgram (reoProg SequencerProgram []))) 
+    [(0,[dataPorts D 1]);(1,[fifoData D 1 E])] 0) 
+    ((* program2SimpProgram *) (reoProg SequencerProgram [])) 
+    ((calculateAmountNewStates (getNewIndexesForStates [t] [(0,[dataPorts D 1]);(1,[fifoData D 1 E])] 1) 1)) (*Index era 2*).
+
+Eval compute in ((calculateAmountNewStates (getNewIndexesForStates [t] [(0,[dataPorts D 1]);(1,[fifoData D 1 E])] 1) 1)).
+
+Eval compute in (getNewIndexesForStates (f([t])(program2SimpProgram (reoProg SequencerProgram []))) [(0,[dataPorts D 1]);(1,[fifoData D 1 E])] 1).
+
+Eval compute in testFuck'2.
+
+Definition t'' := (f([t])(program2SimpProgram (reoProg SequencerProgram []))).
+
+Definition testFuck'3 := Eval compute in processGeneralStep (fst(testFuck'2)) N 
+    [(0,[dataPorts D 1]);(1,[fifoData D 1 E]);(2,[dataPorts E 1])] (mkcalcProps [] 0) 
+    (getNewIndexesForStates (f(t'')(program2SimpProgram (reoProg SequencerProgram []))) 
+    [(0,[dataPorts D 1]);(1,[fifoData D 1 E]);(2,[dataPorts E 1])] 0) 
+    ((* program2SimpProgram *) (reoProg SequencerProgram [])) 3.
+
+
+Eval compute in testFuck'3.
+
+Definition grete := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+  (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) (getNewIndexesForStates [t] [] 0) 
+    (mkcalcProps [] 0). 
+
+Eval compute in grete.
+
+(* O length abaixo tá fudendo o plantão, que é o index. Se ele for zero, a origem fica subtraindo um *)
+Definition grete2 := getModel (emptyModel ports nat nat) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+  ((((box t pi (proposition ports nat 0))))) (getNewIndexesForStates [t] [] 0) 
+    (mkcalcProps [] 0).
 
 Eval compute in grete2.
 
-Eval compute in constructModel [A ; B ; C ; D ; E ; F ; G] [t]
-  (box t pi(box t pi(box t pi(box t pi
-    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))).
+Eval compute in (length (getNewIndexesForStates [t] [] 0) ).
 
-Definition grete3 := constructModel [A ; B ; C ; D ; E ; F ; G] [t]
-  ((diamond t pi(diamond t pi(diamond t pi
-    (diamond t pi(diamond t pi(diamond t pi(diamond t pi (proposition ports nat 0))))))))).
+Definition grete' := testGetModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+  (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))) (getNewIndexesForStates [t] [] 0) 
+    (mkcalcProps [] 0). (*Era emptyModel*)
 
-(* Eval compute in getState grete3 (f([t])(program2SimpProgram (reoProg SequencerProgram []))). *)
+Eval compute in grete'.
 
-Eval compute in V(grete3) 7.
-
-(* More Tests - 13012021 *)
-
-Definition grete4 := constructModel [A ; B ; C ; D ; E ; F ; G] [t]
-  (diamond t pi (proposition ports nat 0)).
-
-Eval compute in singleFormulaVerify (grete4) (box t pi (proposition ports nat 2)) t. (*-> tá somando 1 no index...*)
-
-(* End tests - 13012021 *)
-
-
-Eval compute in singleFormulaVerify (grete3)  ((diamond t pi(diamond t pi(diamond t pi
-    (diamond t pi(diamond t pi(diamond t pi(diamond t pi (proposition ports nat 0))))))))) t. 
-
-Eval compute in getVisitedStates (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 0
-  (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
-    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0)))))))))))
-  [(0,[t])] (mkcalcProps [] 0).
-
-Definition grete5 := constructModel [A ; B ; C ; D ; E ; F ; G] [t]
-    (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
-    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))))). (* não tá voltando quando deveria*)
-
-Eval compute in grete5.
-
-Eval compute in getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 0
-  (box t pi (box t pi(box t pi(box t pi(box t pi(box t pi
-    (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0)))))))))))
-  [(0,[t])] (mkcalcProps [] 0).
-
-Eval compute in  f ([[fifoData D 1 E]]) (program2SimpProgram (reoProg SequencerProgram [])).
-
-(*PERGUNTA: Nested formulas devem já vir com o f(t) na formula?
-  Adicionar um ' no t interno na clausula da modalidade na função resolve o problema.
-  Isso faz com que ele ignore os t de subsequentes aninhamentos (i.e., box t pi (box t pi (phi))
-  vai pegar o primeiro t e disparar por quantas modalidades existirem a direita, o que
-  teoricamente é o certo, salvo o cracudo meta um t' diferente od que f(t) traz.*)
-
-(* Example 2 *)
-
-Definition testProgram := [flowSync E A; flowSync A B; flowSync B C; flowSync C D; flowSync D E].
-
-Definition pi'' := sProgram (reoProg testProgram []).
-
-Definition tvideos := [dataPorts E 1].
-
-Definition grete6 := constructModel [E; A ; B ; C ; D] [tvideos]
-    (box tvideos pi'' (box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi''
-    (box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi'' (proposition ports nat 0))))))))))).
-
-Eval compute in grete6.
-
-Eval compute in getVisitedStates (buildPropModel [A ; B ; C ; D ; E ; F ; G] tvideos 0) [A ; B ; C ; D ; E ; F ; G] [tvideos] 0
-  (box tvideos pi'' (box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi''
-    (box tvideos pi''(box tvideos pi''(box tvideos pi''(box tvideos pi'' (proposition ports nat 0)))))))))))
-  [(0,[tvideos])]. 
-
-(*por que o FIFO tá colocando aquele [] vazio no final? *)
-Definition testea := (program2SimpProgram (reoProg SequencerProgram [])).
-
-Eval compute in f ([[fifoData D 1 E]]) (program2SimpProgram (reoProg SequencerProgram [])).
-
-Eval compute in (parse testea []).
-
-Eval compute in (go' (parse testea []) (length (parse testea [])) []) [fifoData D 1 E].
-
-Eval compute in fire [fifoData D 1 E] ((go' (parse testea []) (length (parse testea [])) []) [fifoData D 1 E]) [].
-
-
-
-
-
-
+Eval compute in getNewIndexesForStates (f([t])(program2SimpProgram (reoProg SequencerProgram []))) [(0, [dataPorts D 1])] 2.
 
 

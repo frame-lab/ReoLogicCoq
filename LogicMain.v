@@ -340,7 +340,6 @@ Defined.
                 end
   end.
 
- (*ERICK : ALTERADO DE SET DATACONNECTOR PARA SET (SET DATACONNECTOR) *)
  Fixpoint fire (t: set dataConnector) (s : set goMarks) (acc: set dataConnector) : set (set dataConnector) :=
     match s with
     | [] =>  match acc with
@@ -682,7 +681,7 @@ Defined.
 
   (* We define the computation of iterations bounded by repetition as follows. *)
   (* It returns the data flow of the connector which immediately preceeds a flow which have already happened.*)
-
+(* Future work - Nu operator
   Definition boundedIteration : set (set dataConnector) ->  set connector -> nat -> (*set dataConnector -> *)
     set ( set (set dataConnector)) -> (set (set dataConnector))  :=
     fix rec t pi iterations resp :=
@@ -699,7 +698,7 @@ Defined.
       match iterations with
       | 0 => resp 
       | Datatypes.S n => if existsb (subSubset t) resp then [last resp t] else (rec (f t pi) pi n (resp ++ [t]))
-      end.
+      end. *)
 
   (** Syntatic definitions **)
   (* We formalize syntatic programs as pi and its operators *)
@@ -707,11 +706,11 @@ Defined.
 
   Inductive syntaticProgram :=
   | sProgram : reoProgram -> syntaticProgram
-  | nu : reoProgram -> syntaticProgram
+ (*  | nu : reoProgram -> syntaticProgram *)
   | star : reoProgram -> syntaticProgram.
 
   Notation "# pi" := (sProgram pi) (no associativity, at level 69).
-  Notation "nu. pi" := (nu pi) (no associativity, at level 69).
+  (* Notation "nu. pi" := (nu pi) (no associativity, at level 69). *)
   Notation "pi *" := (star pi) (no associativity, at level 69).
 
   (* We define our logic's syntax formulae based on classic modal logic's connectives *)
@@ -823,12 +822,11 @@ Defined.
   Definition RTC (m:model) : set (state * state) :=
    set_union equiv_dec (R(Fr(m))) (set_union equiv_dec (getTransitive m) (getReflexive m)).
 
-  (********************* TEMPORARIAMENTE DESATIVADO PARA TESTES NÃO DETERMINISTICOS *****************************)
 
   (*We recover the states reached by means of \nu.pi *)
 
-  Definition getNuPiReachedState (m:model) (t: set (set dataConnector)) (reoConnector: set connector) :=
-   flat_map (getState (m)) (boundedIteration t reoConnector (length reoConnector * 2) []).
+(*   Definition getNuPiReachedState (m:model) (t: set (set dataConnector)) (reoConnector: set connector) :=
+   flat_map (getState (m)) (boundedIteration t reoConnector (length reoConnector * 2) []). *)
 
   (* The notion of diamond and box satisfaction is defined as follows *)
 
@@ -917,7 +915,7 @@ Defined.
                                                 (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
-                  | nu reo => match p' with
+                  (* | nu reo => match p' with
                                    | proposition p'' => 
                                        boxSatisfactionPi (m) (p'')
                                        (getNuPiReachedState m [t] (program2SimpProgram reo))
@@ -960,7 +958,7 @@ Defined.
                                                 (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo)))))
-                                 end
+                                 end *)
                      end
     | diamond t pi p' => match pi with
                   | sProgram reo => match p' with
@@ -1025,7 +1023,7 @@ Defined.
                                                 (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                  end
-                  | nu reo => match p' with
+                  (* | nu reo => match p' with
                                    | proposition p'' => 
                                        diamondSatisfactionPi (m) (p'')
                                        (getNuPiReachedState m [t] (program2SimpProgram reo))
@@ -1068,7 +1066,7 @@ Defined.
                                                 (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo)))))
-                                   end
+                                   end *)
                   end
       end.
 
@@ -1168,15 +1166,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | _ => None
     end.
 
-  Definition axiomNu1 (phi: option formula) : option formula :=
-    match phi with
-    | Some (diamond t (nu pi) phi') => Some (diamond t (star pi) (diamond t (nu pi) phi')) (*ERICK: o segundo 
-    t é um t'*)
-    | _ => None
-    end.
-
-  Check formula.
-
   End LogicMain.
   Section ModelExecution.
 
@@ -1184,6 +1173,16 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
  
   (* A model checker for ReLo *)
+
+  Definition emptyLambda (s : state) (n: name) := 0%Q.
+
+  Definition emptyDelta (s : state) : set (dataConnector name data) := [].
+ 
+  Definition emptyVal (s : state) (prop : nat) : bool := false.
+
+  Definition emptyModel := mkmodel ( mkframe [] [] emptyLambda emptyDelta ) (emptyVal).
+
+  Check emptyModel.
 
   (*ERICK: rodar a função abaixo p todas as portas do modelo que estão em T*)
 
@@ -1307,10 +1306,10 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (*Auxiliary function employed by the function below it*)
 
-  Fixpoint getDelta (dataMarkups : set (nat * set (set (dataConnector name data)))) (state: nat) :=
+  Fixpoint getDelta (dataMarkups : set (nat * (set (dataConnector name data)))) (state: nat) :=
     match dataMarkups with
     | [] => []
-    | dataMarkup::moreData => if fst(dataMarkup) == state then (hd [] (snd(dataMarkup))) else getDelta moreData state
+    | dataMarkup::moreData => if fst(dataMarkup) == state then ((snd(dataMarkup))) else getDelta moreData state
     end.
 
   (*We may also construct composite models by joining states and the relation between them *)
@@ -1344,15 +1343,16 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
               (propCounter(calc) + length (getIndexOfProps(flat_map (buildValidPropositions N state) t))).
 
    Definition addInfoToModel (m: model name nat data) (origin:nat) (dest: nat) 
-    (N: set name) (t:set (set (dataConnector name data))) (dataMarkups : (set (nat * set (set (dataConnector name data)))))
+    (N: set name) (t: (set (dataConnector name data))) (dataMarkups : (set (nat * (set (dataConnector name data)))))
     (calc : calcProps) :=
     mkmodel 
       (mkframe (set_add equiv_dec dest (S(Fr(m)))) (set_add equiv_dec (origin,dest) (R(Fr(m)))) (lambda(Fr(m))) 
       (getDelta dataMarkups))
-      (getValFunction (statesAndProps (getNewValFunc calc N t dest))).
+      (getValFunction (statesAndProps (getNewValFunc calc N [t] dest))).
+  (*ERICK: o [t] é para reaproveitar o que já funciona *)
 
   Definition concatenateModels (m1: model name nat data) (m2: model name nat data) (t: set (set(dataConnector name data))) 
-    (n: set name) (index : nat) (dataMarkups : (set (nat * set (set (dataConnector name data))))) :=
+    (n: set name) (index : nat) (dataMarkups : (set (nat * (set (dataConnector name data))))) :=
     (*ERICK: Corrigir o uso de t na getValFunctionProp na função abaixo*)
     mkmodel 
       (mkframe (set_union equiv_dec (S(Fr(m1))) (S(Fr(m2)))) (set_union equiv_dec (R(Fr(m1))) (R(Fr(m2)))) 
@@ -1376,56 +1376,141 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   | visState::moreStates => if (set_eq t (snd(visState))) then Some (fst(visState)) else getVisitedState t moreStates
   end.
 
-  (*Iteration of programs - Useful for the model construction (the standard star verification is done by means of the RTC) *)
+  Fixpoint getVisitedStateAux (t : (set (dataConnector name data))) (setData : set (set (dataConnector name data))) :=
+    match setData with
+    | [] => false
+    | a::moreData => equiv_decb t a  || getVisitedStateAux t moreData
+    end.
 
-  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat) (*indexProps: nat*)
-    (phi: (formula name data)) (setStates: set (nat * set (set (dataConnector name data)))) (calc : calcProps) :=
+  Fixpoint getVisitedState' (t : (set (dataConnector name data))) 
+      (visStates: set (nat * (set (dataConnector name data)))) : option nat :=
+  match visStates with
+  | [] => None
+  | visState::moreStates => if equiv_decb t (snd(visState)) then Some(fst(visState)) else getVisitedState' t moreStates
+  end.
+
+  (* We retrieve all stats in a iteration step, whether they have been visited or not*)
+
+  Fixpoint getVisitedStates (t : set (set (dataConnector name data))) 
+      (visStates: set (nat * (set (dataConnector name data)))) :=
+    match t with
+    | [] => []
+    | visState::moreStates => ((getVisitedState' visState visStates), visState)::(getVisitedStates moreStates visStates)
+    end.
+
+  Check getVisitedStates.
+
+  (* Now a new index is allocated to the ones not visitated - Only useful to get destination states *)
+  (* Erick : Talvez o problema do não deterministico esteja aqui *)
+  Fixpoint liftIndex (index : nat) (currentStates : set (option nat * set (dataConnector name data))) := 
+    match currentStates with
+    | [] => []
+    | visState::moreStates => match (fst(visState)) with
+                              | None => (index, (snd(visState)))::(liftIndex (Datatypes.S index) moreStates)
+                              | Some a => (a,(snd(visState)))::(liftIndex index moreStates)
+                              end 
+    end.
+
+  Check liftIndex.
+
+  Fixpoint getNewIndexesForStates (t : set (set (dataConnector name data))) 
+      (visStates: set (nat * (set (dataConnector name data)))) (index : nat) :=
+  liftIndex index (getVisitedStates t visStates).
+
+
+  (*Retrieve the next global index available based on the visited states*)
+  Fixpoint getNextIndex (visStates: set (nat * (set (dataConnector name data)))) (index : nat) :=
+    match visStates with
+    | [] => index
+    | visitedState::moreStates => if Nat.ltb index (fst(visitedState)) then getNextIndex moreStates (fst(visitedState)) 
+                              else getNextIndex moreStates (index) 
+    end.
+
+
+  (*We need to apply all intermediate processing steps to each dataFlow reached:*)
+
+  (*Auxiliary definition to calculate the new index, based on the quantities of states that have not been visited in the current iteration *)
+  Fixpoint calculateAmountNewStates (visStates: set (nat * (set (dataConnector name data)))) (baseNat : nat) :=
+    match visStates with
+    | [] => Datatypes.S baseNat
+    | visState::moreStates => if Nat.ltb baseNat (fst(visState)) then calculateAmountNewStates moreStates (fst(visState)) 
+                              else calculateAmountNewStates moreStates (baseNat) 
+    end.
+
+  (*Gets the current origin (i.e., the current state of a data markup) *)
+
+  Fixpoint getOrigin (t: set (dataConnector name data)) (visitedStates : (set (nat * (set (dataConnector name data))))) :=
+    match visitedStates with
+    | [] => 0
+    | state::moreStates => if equiv_decb t (snd(state)) then (fst(state)) else getOrigin t moreStates
+    end.
+
+  Fixpoint processIntermediateStep (m: model name nat data) (origin : nat) 
+    (N: set name) (visitedStates : (set (nat * (set (dataConnector name data)))))
+    (calc : calcProps) (nextSetOfStates : set (nat * set (dataConnector name data))) 
+    (*NextSetOfStates : destino de um t normal aqui*):= 
+    match nextSetOfStates with 
+    | [] => (m, visitedStates)
+    | currentState::moreStates => processIntermediateStep (addInfoToModel m origin (fst(currentState)) N (snd(currentState))
+                                      (set_add equiv_dec ((fst(currentState)),(snd(currentState))) visitedStates) calc)
+              origin N (set_add equiv_dec ((fst(currentState)),(snd(currentState))) visitedStates) calc moreStates
+    end.
+
+  (*Now we need to glue the pieces together to process the entire current states obtained by f(t)*)
+
+  Fixpoint processGeneralStep (m: model name nat data) (N: set name)(visitedStates : (set (nat * (set (dataConnector name data)))))
+  (calc : calcProps) (currentSetOfStates : set (nat * set (dataConnector name data)))
+  (pi : (reoProgram name)) (index : nat) :=
+  match currentSetOfStates with 
+  | [] => (m, (visitedStates,index))
+  | currentState::moreStates => processGeneralStep (fst(processIntermediateStep m (fst(currentState)) N visitedStates calc
+                                       (getNewIndexesForStates (f([snd(currentState)])(program2SimpProgram (pi))) visitedStates index))) N
+                                      (snd(processIntermediateStep m (fst(currentState)) N visitedStates calc
+                                       (getNewIndexesForStates (f([snd(currentState)])(program2SimpProgram (pi))) visitedStates index))) 
+                                        calc (moreStates) pi
+                                       (*Abaixo recalcula o index pro próximo estado*)
+                                       (calculateAmountNewStates (snd(processIntermediateStep m (fst(currentState)) N visitedStates calc
+                                       (getNewIndexesForStates (f([snd(currentState)])(program2SimpProgram (pi))) visitedStates index))) index) 
+  end.
+
+  (*TODO: Iteration of programs - Useful for the model construction (the standard star verification is done by means of the RTC) *)
+
+  Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
+    (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
+    (*setStates : set of already visited states *)
     match phi with
-    (*Erick: replicar o mecanismo de estado visitado/não visitado para os outros cenários *)
     | proposition _ _ p => m
     | diamond t' pi p => match pi with
-                        | sProgram pi' =>
-                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
-                            (*Estado não visitado*)
-                            | None => getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi')))
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc)
-                                      n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
-                            (* Estado já visitado *)
-                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                                      n (f(t)(program2SimpProgram (pi'))) (a) (*só a aqui eu perco o global index*) p 
-                                      (setStates) calc
-                            end
-                        | star pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                        | sProgram pi' =>getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi')))
+                                          (*index begin *) 
+                                          (snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index) )))
+                                          (*index end*)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        | star pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (calculateAmountNewStates (getNewIndexesForStates t setStates index) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi'))) (calculateAmountNewStates (getNewIndexesForStates t setStates index) index)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
     | box t' pi p => match pi with 
-                        | sProgram pi' =>
-                            match (getVisitedState (f(t)(program2SimpProgram (pi'))) setStates) with
-                            (*Estado não visitado*)
-                            | None => getModel ((addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) 
-                                        (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc)(*Esse set_add era apenas setState. Vi que não da certo deixar apenas, pois ele não ve o ultimo caso quando for uma proposição p calcular o delta*))
-                                      n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                                      (set_add equiv_dec (Datatypes.S index,(f(t)(program2SimpProgram (pi')))) (setStates)) calc
-                            (* Estado já visitado *)
-                            | Some a => getModel (addInfoToModel m index (a) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                                      n (f(t)(program2SimpProgram (pi'))) (a) p 
-                                      (setStates) calc
-                            end
-                        | star pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
-                            getModel (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
-                            n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                        | sProgram pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi')))
+                                          (*index begin *) 
+                                          (snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index) )))
+                                          (*index end*)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        | star pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (calculateAmountNewStates (getNewIndexesForStates t setStates index) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi'))) (calculateAmountNewStates (getNewIndexesForStates t setStates index) index)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
     | and a b => (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates) (*ERICK: setStates em formulas compostas adiionado em 16/01*)
     | or a b =>  (concatenateModels (getModel m n t index a setStates calc) (getModel m n t index b setStates calc) t n index setStates) 
@@ -1434,12 +1519,50 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | neg a => (getModel m n t index a setStates calc)
     end.
 
-Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
+  Fixpoint testGetModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
+    (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
+    (*setStates : set of already visited states *)
+    match phi with
+    | proposition _ _ p => setStates
+    | diamond t' pi p => match pi with
+                        | sProgram pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (calculateAmountNewStates (getNewIndexesForStates t setStates index) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi'))) (calculateAmountNewStates (getNewIndexesForStates t setStates index) index)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        | star pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (calculateAmountNewStates (getNewIndexesForStates t setStates index) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi'))) (calculateAmountNewStates (getNewIndexesForStates t setStates index) index)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        end
+    | box t' pi p => match pi with 
+                        | sProgram pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi')))
+                                          (*index begin *)
+                                           (snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index) ))) 
+                                          (*calculateAmountNewStates (setStates) index*)
+                                          (*index end*)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        | star pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (calculateAmountNewStates (getNewIndexesForStates t setStates index) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi'))) (calculateAmountNewStates (getNewIndexesForStates t setStates index) index)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                        end
+    | _ => []
+    end.
+
+
+(*   Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
     (phi: (formula name data)) :=
-    getModel (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0).
+    getModel (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0). *)
 
 
-Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (set(dataConnector name data))) (index:nat) 
+(* Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (set(dataConnector name data))) (index:nat) 
     (*indexProps : nat -> transformar isso no global index?*)
     (phi: (formula name data)) (setStates: set (nat * set (set (dataConnector name data)))) (calc: calcProps) :=
     match phi with
@@ -1460,10 +1583,10 @@ Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (set(d
                             getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
                             (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
+(*                         | nu pi' => 
                             getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc  *)
                         end
     | box t' pi p => match pi with 
                         | sProgram pi' =>
@@ -1481,10 +1604,10 @@ Fixpoint getVisitedStates (m: model name nat data)  (n: set name) (t: set (set(d
                             getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
                             (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
+(*                         | nu pi' => 
                             getVisitedStates (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc *)
                         end
     | and a b => (getVisitedStates m n t index a setStates calc) ++ (getVisitedStates m n t index b setStates calc) 
     | _ => []
@@ -1511,10 +1634,10 @@ Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (set(dataConnec
                             getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
                             (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
+(*                         | nu pi' => 
                             getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc 
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc  *)
                         end
     | box t' pi p => match pi with 
                         | sProgram pi' =>
@@ -1532,40 +1655,15 @@ Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (set(dataConnec
                             getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
                             (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
-                        | nu pi' => 
+(*                         | nu pi' => 
                             getCalc (addInfoToModel m index (Datatypes.S index) n (f(t)(program2SimpProgram (pi'))) setStates calc)
                             n (f(t)(program2SimpProgram (pi'))) (Datatypes.S index) p 
-                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc
+                            (set_add equiv_dec (Datatypes.S index,t) (setStates)) calc *)
                         end
 (*     | and a b => (getCalc m n t index a setStates calc) ++ (getCalc m n t index b setStates calc)  *)
     | _ => calc
-    end.
+    end. *)
 
-
-  (*ERICK: pontos abaixo serão corrigidos após reunião em 23/12. Preciso também tirar o modelo da definição acima (i.e.,
-    retornar o modelo caso a fórmula seja ou não aceita - ok*)
-
-  (* Observações sobre esta abordagem: 
-     - não constrói explicitamente o conjunto R alcançado. -> Em andamento (concluído)
-        -eu particularmente não vejo problemas, pois estados aqui são "labeled"  -> Bruno indica que isso deve ser sim construído. Em andamento
-     - não considera comportamento de operadores de programa star e nu. Isso hoje é processado apenas pelo singleFormulaVerify
-     - preciso achar um balanço entre a chamada da construção do modelo e a chamada de singleFormulaVerify
-     - Temos também que considerar programa com operação em fórmulas aninhadas: <t,pi*>[t,pi*] phi -> OK
-        - seria a solução tirar a chamda para singleFormulaVerify dali e chamar a getNextmodelStep?
-     - Temos que montar o R namoral do modelo resultante. Caso contrário, operadores de programa não irão funcionar. -> Em andamento
-        - esse tópico conflita com o primeiro tópico, uma vez que não temos esta ação, mas é teoricamente endereçado pelo segundo tópico.
-     - A forma que estamos implementando a definição de props como um índice natural não parece ser tão intuitiva aqui: o sistema
-      vai listando numericametne como um índice global qual o número de uma determinada proposição. Cabe ao usuário saber qual o número da proposição denota o que, uma vez
-      que tanto estados quanto proposições são tratados como números. -OK, ver pontos a ajustar "1"
-        - solução: podemos criar uma estrutura "record mchkState" que receberia info adicional baseado no estado atual do modelo (derivada do "T" daquele momento)
-          e armazenaria isso, de forma que seria fácil identificar o estado do modelo.
-     - Talvez o problema de não criar o modelo certinho possa ser endereçado chamando para os casos de programa uma função que concatena dois modelos,
-     pegando o esatdo atual "X" e levando de "X" para os "Y" encontrados no "novo" modelo em R e adicionando os "Y" no conjunto do modelo gerado. - Isso ai.
-    - OBS: tem algo estranho com a construção da função de valoração - Em andamento.
-
-    Pontos a ajustar:
-    "1" - Proposições precisam ser únicas por estado, tal como numa hash. O programa atualmente as conta baseadas num índice. a ideia é ir adicionando as props
-      numa lista e sempre contando o tamanho da lista p passar para a getProp. *)
 
   End ModelExecution.
   End ReoLogicCoq.
