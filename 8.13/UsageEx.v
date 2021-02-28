@@ -199,8 +199,6 @@ Proof.
 all:congruence.
 Defined.
 
-
-
 (* LossyFIFO - simplified *)
 
 Definition lossyFifoProgram := [flowLossySync A B;flowFifo B C].
@@ -222,23 +220,45 @@ Definition lossyFifoFrame := mkframe [D_A; D_B; D_C; D_BFIFOC]
 
 Definition getPropositionLossy (s: statesLossyFifo) :=
   match s with
-  | D_A => [1]
-  | D_B => [2]
-  | D_BFIFOC => [3]
-  | D_C => [4]
+  | D_A => [dataInPorts A 1; dataInPorts A 0]
+  | D_B => [dataInPorts B 1; dataInPorts B 0]
+  | D_BFIFOC => [dataInFifo A 1 B; dataInFifo A 0 B]
+  | D_C => [dataInPorts B 1; dataInPorts C 0]
   end.
 
-Definition propositions (n:nat) :=
-  match n with
-  | 1 => dataInPort (dataPorts A 0) n
-  | 2 => dataInPort (dataPorts B 0) n
-  | 3 => dataInPort (fifoData B 0 C) n
-  | 4 => dataInPort (dataPorts C 0) n
-  | _ => False
-  end.
+(* Instance nat_eqDec : EqDec nat eq := {equiv_dec x y := 
+		match x, y with 
+    | 0, 0 => in_left
+    | Datatypes.S n, Datatypes.S m => if m == n then in_left else in_right
+    | 0 , Datatypes.S n | Datatypes.S n, 0 => in_right
+    end
+    }.
+  all : congruence. Defined.  *)
 
-Definition valuationLossyFifo (s: statesLossyFifo) (p : nat) := 
-  existsb (fun x : nat => beq_nat p x) (getPropositionLossy s).
+Instance dataProp_eqdec2 {name data : Type} `{EqDec name eq} `{EqDec data eq} : EqDec (dataProp name data) eq :=
+    {
+      equiv_dec x y :=
+        match x, y with
+          | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+          | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+          | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+          | dataInPorts a x , dataInFifo b y c => in_right
+          | dataInPorts a x , dataBothPorts _ b y => in_right
+          | dataInFifo a x b , dataInPorts c y => in_right
+          | dataInFifo a x b , dataBothPorts _ c y => in_right
+          | dataBothPorts _ a b , dataInPorts c y => in_right
+          | dataBothPorts _ a b , dataInFifo c y d  => in_right
+        end
+     }.
+all:congruence. Defined.
+
+Eval compute in equiv_dec (dataInPorts A 1) (dataInPorts A 1).
+
+(* 
+  Eval compute in (dataProp_eqdec2 ports nat) dataInPorts A 1 == dataInPorts A 1. *)
+
+Definition valuationLossyFifo (s: statesLossyFifo) (p : dataProp ports nat) :=
+  existsb (fun x : (dataProp ports nat) => equiv_decb p x) (getPropositionLossy s).
 
 Definition lossyFifoModel := mkmodel lossyFifoFrame valuationLossyFifo.
 
@@ -252,19 +272,13 @@ Definition piStar := star (reoProg lossyFifoProgram []).
 
 Eval compute in singleFormulaVerify lossyFifoModel
   (box t' pi' 
-    (or (proposition ports nat 1) (proposition ports nat 2))) t'.
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))) t'.
 
 Eval compute in singleFormulaVerify lossyFifoModel
   (impl 
-    ( box t' pi' (or (proposition ports nat 1) 
-                     (proposition ports nat 2)))
-                  (neg (box t' pi' (proposition ports nat 3)))) t'.
-
-Eval compute in singleFormulaVerify lossyFifoModel
-  (impl 
-    ( box t' pi' (or (proposition ports nat 1) 
-                     (proposition ports nat 2)))
-                  (neg (box t' piStar (proposition ports nat 3)))) t'.
+    ( box t' pi' (or (proposition (dataInPorts A 1)) 
+                     (proposition (dataInPorts B 1))))
+                  (neg (box t' pi' (proposition (dataInFifo B 1 C))))) t'.
 
 (* Sequencer - Simplified*)
 Definition SequencerProgram := [flowFifo D E; flowSync E A; flowFifo E F;
@@ -296,22 +310,22 @@ Definition sequencerFrame := mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_F
 (* Idea  - map a natural number to a proposition. Then, our valuation function state -> set nat
   tells us which propositions are valid in a state. This is entirely controlled by the user's model. *)
 
-Definition sequencerPropositions (n: nat) : Prop :=
+(* Definition sequencerPropositions (n: nat) : Prop :=
   match n with
   | 1 => dataInPort (dataPorts A 0) n
   | 2 => dataInPort (dataPorts B 0) n
   | 3 => dataInPort (dataPorts C 0) n
   | 4 => dataInPort (dataPorts D 0) n
   | _ => False
-  end.
+  end. *)
 
 
-Definition getPropositionSequencer (s: statesSequencer) : set nat :=
+Definition getPropositionSequencer (s: statesSequencer) :=
   match s with
-  | DA => [1]
-  | DB => [2]
-  | DC => [3]
-  | DD => [4]
+  | DA => [dataInPorts A 0; dataInPorts A 1]
+  | DB => [dataInPorts B 0; dataInPorts B 1]
+  | DC => [dataInPorts C 0; dataInPorts C 1]
+  | DD => [dataInPorts D 0; dataInPorts D 1]
   | DE => [] 
   | DF => []
   | DG => []
@@ -320,8 +334,8 @@ Definition getPropositionSequencer (s: statesSequencer) : set nat :=
   | D_DFIFOE => [] 
   end.
 
-Definition sequencerValuation (s: statesSequencer) (p : nat) := 
-  existsb (fun x : nat => beq_nat p x) (getPropositionSequencer s).
+Definition sequencerValuation (s: statesSequencer) (p : (dataProp ports nat)) := 
+  existsb (fun x : (dataProp ports nat) => equiv_decb p x) (getPropositionSequencer s).
 
 Definition sequencerModel := mkmodel sequencerFrame sequencerValuation.
 
@@ -332,20 +346,20 @@ Definition piStar' := star (reoProg SequencerProgram []).
 Definition t := [dataPorts D 1].
 
 Eval compute in singleFormulaVerify sequencerModel
-(box t pi (proposition ports nat 2)) t.
+(box t pi (proposition (dataInPorts B 1))) t.
 
 (* Example 1 *)
 
 Eval compute in singleFormulaVerify sequencerModel
       (box t pi 
-        (((neg ((and (and (proposition ports nat 1) (proposition ports nat 2))
-           (proposition ports nat 3))))))) t.
+        (((neg ((and (and (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))
+           (proposition (dataInPorts C 1)))))))) t.
 
 (* Example 2 *)
 Eval compute in singleFormulaVerify sequencerModel
       (impl 
-          (box t piStar' (proposition ports nat 4))
-           (box t piStar' (proposition ports nat 3)))  t.
+          (box t piStar' (proposition (dataInPorts D 1)))
+           (box t piStar' (proposition (dataInPorts C 1))))  t.
 
 
 (* Model checker tests *)
@@ -355,10 +369,7 @@ Eval compute in buildValidPropositions [D] (0) t .
 Definition testModel := buildPropModel ([D]) (t) (0).
 
 Eval compute in singleFormulaVerify 
-  (buildPropModel ([D]) (t) (0)) (proposition ports nat 1) t.
-
-Eval compute in singleFormulaVerify 
-  (buildPropModel ([D]) (t) (0)) (proposition ports nat 1) t.
+  (buildPropModel ([D]) (t) (0)) (proposition (dataInPorts D 1)) t.
 
 Eval compute in buildValidPropositions [D] 0 t.
 
@@ -370,7 +381,7 @@ Eval compute in buildValidPropositions [D] 0 t.
 
 Definition N := [A; B; C; D; E; F; G].
 
-Definition calc :=  (mkcalcProps [] 0).
+Definition calc : calcProps ports nat := (mkcalcProps [] 0).
 
 (*Foco no eval abaixo. Ele vai te dar dicas p sair desse buraco*)
 (* Eval compute in processIntermediateStep (buildPropModel N (hd [] [t]) 0) 0 N 
@@ -419,24 +430,27 @@ Eval compute in testFuck'3. *)
 
 Definition grete := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) 
+  (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))))))) 
     (getNewIndexesForStates [t] [] 0) 
-    (mkcalcProps [] 0). 
+    (getNewValFunc (mkcalcProps [] 0)
+      [A ; B ; C ; D ; E ; F ; G] [t] 0). 
 
 Eval compute in grete.
 
 Definition grete1' := getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))))))) (getNewIndexesForStates [t] [] 0) 
-    (mkcalcProps [] 0). 
+  (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))))))) (getNewIndexesForStates [t] [] 0) 
+    (getNewValFunc (mkcalcProps [] 0)
+      [A ; B ; C ; D ; E ; F ; G] [t] 0). 
 
 Eval compute in grete1'.
 
 (* O length abaixo tá fudendo o plantão, que é o index. Se ele for zero, a origem fica subtraindo um *)
 Definition grete2 := getModel' (emptyModel ports nat nat) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  ((((box t pi (proposition ports nat 0))))) (getNewIndexesForStates [t] [] 0) 
-    (mkcalcProps [] 0).
+  ((((box t pi (proposition (dataInPorts D 1)))))) (getNewIndexesForStates [t] [] 0) 
+    (getNewValFunc (mkcalcProps [] 0)
+      [A ; B ; C ; D ; E ; F ; G] [t] 0).
 
 Eval compute in grete2.
 
@@ -444,7 +458,7 @@ Eval compute in (length (getNewIndexesForStates [t] [] 0)).
 
 Definition grete' := testGetModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (box t pi(box t pi(box t pi(box t pi (proposition ports nat 0))))) (getNewIndexesForStates [t] [] 0) 
+  (box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))) (getNewIndexesForStates [t] [] 0) 
     (mkcalcProps [] 0). (*Era emptyModel*)
 
 Eval compute in grete'.
@@ -459,8 +473,8 @@ Eval compute in getNewValFunc (mkcalcProps [] 0)
 
 Definition compGrete := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (and (box t pi (proposition ports nat 0))
-       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 1)))))))))) 
+  (and (box t pi (proposition (dataInPorts D 1)))
+       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInFifo D 1 E))))))))))) 
     (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0). 
@@ -469,8 +483,8 @@ Eval compute in compGrete.
 
 Definition testCompGrete := testGetModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (and (box t pi (proposition ports nat 0))
-       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 1)))))))))) 
+  (and (box t pi (proposition (dataInPorts D 1)))
+       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInFifo D 1 E))))))))))) 
     (getNewIndexesForStates [t] [] 0) 
     (mkcalcProps [] 0). 
 
@@ -478,8 +492,8 @@ Eval compute in testCompGrete.
 
 Definition compGrete2 := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (and (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 0)))))))))
-       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition ports nat 1)))))))))) 
+  (and (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1))))))))))
+       (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInFifo D 1 E))))))))))) 
     (getNewIndexesForStates [t] [] 0) 
     (mkcalcProps [] 0). 
 
@@ -487,7 +501,7 @@ Definition compGrete2 := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t
 
 Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
-  (box t piStar'((((((((proposition ports nat 2))))))))) 
+  (box t piStar'((((((((proposition (dataInFifo D 1 E)))))))))) 
   (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0) 9.
@@ -496,19 +510,15 @@ Eval compute in star1.
 
 (*O Trecho de código abaixo dá false pq o conjunto R é vazio para avaliação do RTC.*)
 Eval compute in singleModelStep (getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 
-  [A ; B ; C ; D ; E ; F ; G] [t] 1 ((box t piStar'((((((((proposition ports nat 1)))))))))) 
+  [A ; B ; C ; D ; E ; F ; G] [t] 1 ((box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 
   (getNewIndexesForStates [t] [] 0) (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0))
-  ((box t piStar'((((((((proposition ports nat 1)))))))))) 0.
+  ((box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 0.
 
-Eval compute in V(getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 
-  [A ; B ; C ; D ; E ; F ; G] [t] 1 (box t pi(box t piStar'((((((((proposition ports nat 1)))))))))) 
-  (getNewIndexesForStates [t] [] 0) (getNewValFunc (mkcalcProps [] 0)
-      [A ; B ; C ; D ; E ; F ; G] [t] 0)) 1 0.
 
 (*Versão atual do getmodel tá expandido cmo se fosse um pi o piStar na instrução acima. Isso vai mudar com o uso do expandStarFormulas*)
 
 Eval compute in getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 
-  [A ; B ; C ; D ; E ; F ; G] [t] 1 (box t pi(box t piStar'((((((((proposition ports nat 1)))))))))) 
+  [A ; B ; C ; D ; E ; F ; G] [t] 1 (box t pi(box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 
   (getNewIndexesForStates [t] [] 0) (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0).

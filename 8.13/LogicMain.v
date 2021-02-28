@@ -69,8 +69,8 @@ Program Instance set_eqdec {A} `(eqa : EqDec A eq) : EqDec (set A) eq :=
       | nil , cons hd tl | cons hd tl, nil => in_right
     end }.
 
-(*Module ReoLogicCoq.*)
-  Section ReoLogicCoq.
+(*Module LogicMain.*)
+(*   Section ReoLogicCoq. *)
 
   Section LogicMain.
 
@@ -146,6 +146,28 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | fifoData : name -> data -> name -> dataConnector
     | dataPorts : name -> data -> dataConnector.
 
+  Inductive dataProp name data :=
+    | dataInFifo : name -> data -> name -> dataProp name data
+    | dataInPorts : name -> data -> dataProp name data
+    | dataBothPorts : name -> name -> dataProp name data.
+
+(*   Program Instance dataProp_eqdec `(EqDec name eq) `(EqDec data eq) : EqDec (dataProp name data) eq :=
+  {
+    equiv_dec x y :=
+      match x, y with
+        | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+        | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+        | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+        | dataInPorts a x , dataInFifo b y c => in_right
+        | dataInPorts a x , dataBothPorts _ b y => in_right
+        | dataInFifo a x b , dataInPorts c y => in_right
+        | dataInFifo a x b , dataBothPorts _ c y => in_right
+        | dataBothPorts _ a b , dataInPorts c y => in_right
+        | dataBothPorts _ a b , dataInFifo c y d  => in_right
+      end
+  }.
+ *)
+
   Open Scope Q_scope.
   (*Frame definition *)
   Record frame := mkframe {
@@ -164,7 +186,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
      not in s"*)
   Record model := mkmodel {
     Fr  : frame;
-    V : state -> nat -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
+    V : state -> (* nat *) (dataProp name data) -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
                               (*Erick : por questões operacionais (i.e., o que exatamente é um pattern em cima de Prop)
                                 Acho que devemos criar uma gramática p falar de proposições.*)
                               (*edit: 10/05 - pode ser o caso de ser uma função state -> prop, e o retorno é uma
@@ -172,10 +194,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                 ser a forma padrão de formalizar modelos de Kripke no Coq.*)
                               (*edit: 10/05 - 2 - trocando p nat segundo a ideia explicada no exemplo, baseada
                                 em outras implementações de Kripke semantics em Coq.*)
+                              (*27/02/21 - Changed from Prop approach to an inductive type approach*)
   }.
-
-  Print model.
-  Print frame.
 
   (*06/04 - Redesign of Reo programs as \pi = (f,b) *)
 
@@ -230,7 +250,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
 
   Inductive program :=
     | to : name -> name -> program (* sync, replicator, merger *)
-    | asyncTo : name -> name -> program (* LossySync : v0 era name ->  name -> name. não vejo necessidade disso *)
+    | asyncTo : name -> name -> program (* LossySync *)
     | fifoAlt : name -> name -> program (* fifo *)
     | SBlock : name -> name -> program (* syncDrain *)
     | ABlock : name -> name -> program.  (* asyncDrain *)
@@ -656,7 +676,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
 
   (* We define our logic's syntax formulae based on classic modal logic's connectives *)
   Inductive formula :=
-  | proposition : (*Prop*) nat -> formula
+  | proposition : (*Prop*) (* nat *) (dataProp name data) -> formula
   | box : set dataConnector -> syntaticProgram -> formula -> formula
   | diamond : set dataConnector -> syntaticProgram -> formula -> formula
   | and : formula -> formula -> formula
@@ -675,7 +695,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
 
   (* We provide a proposition to state a data item of a port *)
 
-  Definition dataFromPorts (data: dataConnector) :=
+(*   Definition dataFromPorts (data: dataConnector) :=
     match data with
     | dataPorts a x => x
     | fifoData a x b => x
@@ -684,8 +704,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Definition dataInPort (n: dataConnector) (d:data): Prop := 
     dataFromPorts n = d. 
 
-  Definition dataInFifo (n: dataConnector) (d: data) : Prop :=
-    dataFromPorts n = d.
+  Definition dataInFifoProp (n: dataConnector) (d: data) : Prop :=
+    dataFromPorts n = d. *)
 
   Fixpoint getData (portsData : set dataConnector) (portName : name) (portData : data) : bool :=
     match portsData with 
@@ -770,12 +790,12 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
 
   (* The notion of diamond and box satisfaction is defined as follows *)
 
-  Definition diamondSatisfactionPi (m:model) (p : nat) 
+  Definition diamondSatisfactionPi (m:model) (p : dataProp name data) 
     (states : set state) :=
     if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
     existsb (fun x : state => (V(m)x p)) states.
 
-  Definition boxSatisfactionPi (m:model) (p : nat) 
+  Definition boxSatisfactionPi (m:model) (p : dataProp name data) 
     (states: set state) :=
     if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
     forallb (fun x : state => (V(m)x p)) states.
@@ -1107,31 +1127,49 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   End LogicMain.
+
   Section ModelExecution.
 
   Variable name state data: Type.
   Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
- 
+
+  Obligation Tactic := congruence.
+  Program Instance dataProp_eqdec2 {name data : Type} `{EqDec name eq} `{EqDec data eq} : EqDec (dataProp name data) eq :=
+    {
+      equiv_dec x y :=
+        match x, y with
+          | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+          | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+          | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+          | dataInPorts a x , dataInFifo b y c => in_right
+          | dataInPorts a x , dataBothPorts _ b y => in_right
+          | dataInFifo a x b , dataInPorts c y => in_right
+          | dataInFifo a x b , dataBothPorts _ c y => in_right
+          | dataBothPorts _ a b , dataInPorts c y => in_right
+          | dataBothPorts _ a b , dataInFifo c y d  => in_right
+        end
+     }.
+
+  Print dataProp_eqdec2.
+
   (* A model checker for ReLo *)
 
   Definition emptyLambda (s : state) (n: name) := 0%Q.
 
   Definition emptyDelta (s : state) : set (dataConnector name data) := [].
  
-  Definition emptyVal (s : state) (prop : nat) : bool := false.
+  Definition emptyVal (s : state) (prop : dataProp name data) : bool := false.
 
   Definition emptyModel := mkmodel ( mkframe [] [] emptyLambda emptyDelta ) (emptyVal).
 
   Check emptyModel.
 
-  (*ERICK: rodar a função abaixo p todas as portas do modelo que estão em T*)
-
   Definition retrieveSinglePortProp (t : set (dataConnector name data)) (index : nat) (n : name)
-    : set (nat * Prop) :=
+    : set (dataProp name data) :=
     match t with
     | [] => []
     | a::t' => match a with
-               | dataPorts a x => if (n == a) then [(Datatypes.S  (index), dataInPort (dataPorts n x) x)] else []
+               | dataPorts a x => if (n == a) then [dataInPorts n x] else []
                | fifoData a x b => []
                end
     end.
@@ -1142,24 +1180,23 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | _, _ => false
     end.
 
-  Definition portsHaveSameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : Prop :=
+  Definition portsHaveSameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : set (dataProp name data) :=
     match n1,n2 with
-    | dataPorts a x, dataPorts b y => (dataInPort (dataPorts a x) x) = (dataInPort (dataPorts b y) y)
-    | _ , _ => False
+    | dataPorts a x, dataPorts b y => if x == y then [dataBothPorts data a b] else []
+    | _ , _ => []
     end.
     
   Fixpoint retrieveTwoPortsProp  (index:nat) (t: set (dataConnector name data)) 
-    (n : (dataConnector name data)) : set (nat * Prop) :=
+    (n : (dataConnector name data)) : set (dataProp name data) :=
     match t with
     | [] => []
-    | a::t' => if (sameData n a) then [(index, portsHaveSameData a n)]++(retrieveTwoPortsProp index t' n)
-               else (retrieveTwoPortsProp index t' n)
+    | a::t' => portsHaveSameData a n++(retrieveTwoPortsProp index t' n)
     end.
 
   Fixpoint constructSetOfStates (phi: formula (set (dataConnector name data))
     (syntaticProgram name)) (n: nat) : set nat :=
     match phi with 
-    | proposition _ _ p => [n]
+    | proposition p => [n]
     | neg p => set_add equiv_dec (n) (constructSetOfStates p (n))
     | and a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
@@ -1187,19 +1224,19 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (* We also consider FIFO entries to derive propositions *)
 
-  Definition dataInFIFO (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : Prop :=
+(*   Definition dataInFIFO (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : Prop :=
     if (equiv_decb n1 n2) then 
       match n1,n2 with
       | fifoData a x b, fifoData c y d => dataInFifo (fifoData a x b) x
       | _, _ => False
       end
-    else False.
+    else False. *)
 
   Fixpoint retrieveFIFOdataProp (index: nat) (t: set (dataConnector name data)) 
-    (n : dataConnector name data) : set (nat * Prop) :=
+    (n : dataConnector name data) : set (dataProp name data) :=
     match t with
     | fifodata::t' => match fifodata with
-                    | fifoData a x b => if (equiv_decb fifodata n) then [(index, dataInFIFO fifodata n)]++(retrieveFIFOdataProp index t' n)
+                    | fifoData a x b => if (equiv_decb fifodata n) then [dataInFifo a x b]++(retrieveFIFOdataProp index t' n)
                                         else (retrieveFIFOdataProp index t' n)
                     | dataPorts a b => (retrieveFIFOdataProp index t' n)
                     end
@@ -1207,15 +1244,15 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   Definition buildValidPropositions (N: set name) (index: nat) (t: set (dataConnector name data)) 
-     : set (nat * Prop) :=
+     : set (dataProp name data) :=
     ((flat_map(retrieveTwoPortsProp index t) (t)) ++ 
     (flat_map(retrieveSinglePortProp t index) (N))) ++
     (flat_map(retrieveFIFOdataProp index t) t).
 
-  Fixpoint getProp (setProp: set (nat * Prop)) (n: nat) : bool :=
+  Fixpoint getProp (setProp: set (dataProp name data)) (n: (dataProp name data)) : bool :=
     match setProp with  
     | [] => false
-    | a::t => if (fst(a) == n) then true else getProp t n
+    | a::t => if (equiv_decb a n) then true else getProp t n
     end.
 
   (*aqui teremos dois nat: um indicando o index das proposições e p o que denota a proposição em si. *)
@@ -1223,7 +1260,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     index: estado que quero calcular
     s ;estado a avaliar (pela assinatura da função. A grosso modo, S = index)
     p : prop -> verificar*)
-   Definition getValFunctionProp (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:nat) :=
+   Definition getValFunctionProp (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:(dataProp name data)) :=
     getProp ((buildValidPropositions N index t )) p.
 
   Definition setStateForProp (s: nat) := [s].
@@ -1252,7 +1289,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (*We may also construct composite models by joining states and the relation between them *)
   (*props : set of states and the propositions that hold in them.*)
-  Fixpoint getValFunction (props : set (nat * (set nat))) (state : nat) (prop: nat) :=
+  Fixpoint getValFunction (props : set (nat * (set (dataProp name data)))) (state : nat) (prop: (dataProp name data)) :=
     match props with
     | [] => false
     | stateAndProp::moreProps => if fst(stateAndProp) == state then
@@ -1265,20 +1302,22 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   (* Auxiliary record to hold the global index of props*)
   Record calcProps := mkcalcProps {
-    statesAndProps : set (nat * (set nat));
+    statesAndProps : set (nat * set (dataProp name data));
     propCounter : nat
   }.
 
-  (*Returns the index of propositions construted at a specific state *)
-  Fixpoint getIndexOfProps (setProps: set (nat * Prop)) : set nat :=
+  Check calcProps.
+
+(*   (*Returns the index of propositions construted at a specific state *)
+  Fixpoint getIndexOfProps (setProps: set (nat * (dataProp name data))) : set (dataProp name data) :=
     match setProps with
     | [] => []
-    | prop::moreProps => set_union equiv_dec [fst(prop)] (getIndexOfProps moreProps)
-    end.
+    | prop::moreProps => set_union equiv_dec [snd(prop)] (getIndexOfProps moreProps)
+    end. *)
 
   Definition getNewValFunc (calc: calcProps) (N: set name) (t:set (set (dataConnector name data))) (state: nat) :=
-  mkcalcProps (set_add equiv_dec (state,getIndexOfProps(flat_map (buildValidPropositions N (propCounter(calc))) t)) (statesAndProps calc)) 
-              (propCounter(calc) + length (getIndexOfProps(flat_map (buildValidPropositions N state) t))).
+  mkcalcProps (set_add equiv_dec (state,flat_map (buildValidPropositions N (propCounter(calc))) t) (statesAndProps calc)) 
+              (propCounter(calc) + length (flat_map (buildValidPropositions N state) t)).
 
    Definition addInfoToModel (m: model name nat data) (origin:nat) (dest: nat) 
     (N: set name) (t: (set (dataConnector name data))) (dataMarkups : (set (nat * (set (dataConnector name data)))))
@@ -1424,7 +1463,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
     (*setStates : set of already visited states *)
     match phi with
-    | proposition _ _ p => m
+    | proposition p => m
     | diamond t' pi p => match pi with
                         | sProgram pi' => getModel' (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1485,7 +1524,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     (*setStates : set of already visited states *)
     (*This is the new version of old "getVisitedStates"*)
     match phi with
-    | proposition _ _ p => setStates
+    | proposition p => setStates
     | diamond t' pi p => match pi with
                         | sProgram pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1601,7 +1640,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
     (*setStates : set of already visited states *)
     match phi with
-    | proposition _ _ p => calc
+    | proposition p => calc
     | diamond t' pi p => match pi with
                         | sProgram pi' => getCalc (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1654,7 +1693,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   End ModelExecution.
-  End ReoLogicCoq.
+(*   End ReoLogicCoq. *)
 
 Require Export ListSet.
 Require Export List.

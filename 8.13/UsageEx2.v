@@ -227,14 +227,14 @@ Definition N := [A;B;C;D;E].
 
 (*ERICK : só pega o primeiro dos estados *)
 Definition model1 := getModel' (emptyModel ports nat nat) [A;B;C;D;E] t (1) 
-            (box [] pi(box [] pi(box [] pi (proposition ports nat 0)))) 
+            (box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))) 
             (getNewIndexesForStates t [] 0) 
             (mkcalcProps [] 0).
 
 Eval compute in model1.
 
 Definition model1Test := testGetModel (emptyModel ports nat nat) [A;B;C;D;E] t (length (getNewIndexesForStates t [] 0)) 
-            (box [] pi(box [] pi(box [] pi(box [] pi (proposition ports nat 0)))))
+            (box [] pi(box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))))
             (getNewIndexesForStates t [] 0) 
             (mkcalcProps [] 0).
 
@@ -244,9 +244,9 @@ Eval compute in model1Test.
 (*Halt tests *)
 
 Definition flowtestHalt := [flowSync B C; flowFifo A C].
-Definition blockTestHalt := [flowSyncdrain A B].
+Definition blockTestHalt := [flowaSyncdrain A B].
 
-Definition t2 : list (dataConnector ports nat) := [dataPorts A 0; dataPorts B 0].
+Definition t2 : list (dataConnector ports nat) := [dataPorts A 0].
 
 Definition nPi := parse (program2SimpProgram (reoProg flowtestHalt blockTestHalt)) [].
 
