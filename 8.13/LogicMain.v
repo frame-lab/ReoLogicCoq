@@ -151,7 +151,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | dataInPorts : name -> data -> dataProp name data
     | dataBothPorts : name -> name -> dataProp name data.
 
-(*   Program Instance dataProp_eqdec `(EqDec name eq) `(EqDec data eq) : EqDec (dataProp name data) eq :=
+ Program Instance dataProp_eqdec `(eqa: EqDec name eq) `(eqb: EqDec data eq) : EqDec (dataProp name data) eq :=
   {
     equiv_dec x y :=
       match x, y with
@@ -166,7 +166,6 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
         | dataBothPorts _ a b , dataInFifo c y d  => in_right
       end
   }.
- *)
 
   Open Scope Q_scope.
   (*Frame definition *)
@@ -197,6 +196,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                               (*27/02/21 - Changed from Prop approach to an inductive type approach*)
   }.
 
+
   (*06/04 - Redesign of Reo programs as \pi = (f,b) *)
 
   Inductive flowProgram :=
@@ -206,14 +206,59 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | flowMerger : name -> name -> name -> flowProgram
     | flowReplicator : name -> name -> name -> flowProgram.
 
+  Program Instance flowProgram_eqdec `{EqDec name eq} : EqDec flowProgram eq :=
+  { equiv_dec x y :=
+    match x, y with
+    | flowSync a b, flowSync c d => if a == c then if b == d then in_left else in_right else in_right
+    | flowLossySync a b, flowLossySync c d => if a == c then if b == d then in_left else in_right else in_right
+    | flowFifo a b, flowFifo c d => if a == c then if b == d then in_left else in_right else in_right
+    | flowMerger a b c, flowMerger d e f => if a == d then if b == e then if c == f
+                                            then in_left else in_right else in_right else in_right
+    | flowReplicator a b c, flowReplicator d e f => if a == d then if b == e then if c == f
+                                            then in_left else in_right else in_right else in_right
+    | flowSync a b, flowLossySync c d | flowSync a b, flowFifo c d => in_right
+    | flowSync a b, flowMerger c d e | flowSync a b, flowReplicator c d e => in_right
+
+    | flowLossySync a b, flowSync c d | flowLossySync a b, flowFifo c d => in_right
+    | flowLossySync a b, flowMerger c d e | flowLossySync a b, flowReplicator c d e => in_right
+
+    | flowFifo a b, flowSync c d | flowFifo a b, flowLossySync c d => in_right
+    | flowFifo a b, flowMerger c d e | flowFifo a b, flowReplicator c d e => in_right
+
+    | flowReplicator a b c, flowSync d e => in_right
+    | flowReplicator a b c, flowLossySync d e => in_right
+    | flowReplicator a b c, flowFifo d e => in_right
+    | flowReplicator a b c, flowMerger d e f => in_right
+
+    | flowMerger a b c, flowSync d e => in_right
+    | flowMerger a b c, flowLossySync d e => in_right
+    | flowMerger a b c, flowFifo d e => in_right
+    | flowMerger a b c, flowReplicator d e f => in_right
+    end}.
+
+
   Inductive blockProgram :=
     | flowSyncdrain : name -> name -> blockProgram
     | flowaSyncdrain : name -> name -> blockProgram.
+
+  Program Instance blockProgram_eqdec `{EqDec name eq} : EqDec blockProgram eq :=
+  { equiv_dec x y :=
+    match x, y with
+    | flowSyncdrain a b, flowSyncdrain c d | flowaSyncdrain a b, flowaSyncdrain c d => if a == c then if b == d then in_left else in_right else in_right
+    | flowSyncdrain a b, flowaSyncdrain c d | flowaSyncdrain a b, flowSyncdrain c d => in_right
+    end}.
 
   (* Lifting from \pi = (f,b) to \pi *)
 
   Inductive reoProgram :=
     | reoProg : set flowProgram -> set blockProgram -> reoProgram.
+
+
+  Program Instance reoProgram_eqdec `{EqDec flowProgram eq} `{EqDec blockProgram eq} : EqDec reoProgram eq :=
+  { equiv_dec x y :=
+    match x, y with
+    | reoProg a b, reoProg c d => if a == c then if b == d then in_left else in_right else in_right
+    end}.
 
   Definition singleFlow2Reo (flowProg : flowProgram) := 
     match flowProg with
@@ -416,7 +461,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     match s with
     | [] => []
     | dataMark::t => match dataMark with
-                     | goTo a b => match current with (*ERICK: vou acabar redefinindo isso como outra função. TODO verificar *)
+                     | goTo a b => match current with
                                    | goTo u v => if (equiv_decb b v) then (goTo u v)::(swap t current) 
                                                  else (goTo a b)::(swap t current)
                                    | goFifo u w v => if (equiv_decb b v) then (goFifo u w v)::(swap t current) 
@@ -670,28 +715,103 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
  (*  | nu : reoProgram -> syntaticProgram *)
   | star : reoProgram -> syntaticProgram.
 
+Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram eq :=
+  { equiv_dec x y :=
+    match x, y with
+      | sProgram a , sProgram b  => if a == b then in_left else in_right
+      | star a, star b => if a == b then in_left else in_right 
+      | sProgram a, star b | star a, sProgram b => in_right 
+    end
+    }.
+
   Notation "# pi" := (sProgram pi) (no associativity, at level 69).
   (* Notation "nu. pi" := (nu pi) (no associativity, at level 69). *)
   Notation "pi *" := (star pi) (no associativity, at level 69).
 
   (* We define our logic's syntax formulae based on classic modal logic's connectives *)
-  Inductive formula :=
+  Inductive formula:=
   | proposition : (*Prop*) (* nat *) (dataProp name data) -> formula
   | box : set dataConnector -> syntaticProgram -> formula -> formula
   | diamond : set dataConnector -> syntaticProgram -> formula -> formula
   | and : formula -> formula -> formula
   | or : formula -> formula -> formula
   | neg : formula -> formula
-  | impl : formula -> formula -> formula
+  | imp : formula -> formula -> formula
   | biImpl : formula -> formula -> formula.
   (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
 
-  Context `{EqDec formula eq}.
+  Program Instance formula_eqDec `(eqa: EqDec name eq) `(eqb : EqDec data eq)  : EqDec (formula) eq :=
+    { equiv_dec := fix rec dc1 dc2 :=
+      match dc1,dc2 with
+       | proposition a, proposition b => if a == b then in_left else in_right
+       | box a b c, box d e f => if a == d then if b == e  then if rec c f  
+                                then in_left else in_right else in_right else in_right
+       | diamond a b c, diamond d e f => if a == d then if b == e  then if rec c f  
+                                then in_left else in_right else in_right else in_right
+       | and a b, and c d => if rec a c then if rec b d
+                                then in_left else in_right else in_right
+       | or a b, or c d => if rec a c then if rec b d
+                                then in_left else in_right else in_right
+       | imp a b, imp c d => if rec a c then if rec b d
+                                then in_left else in_right else in_right
+       | biImpl a b, biImpl c d => if rec a c then if rec b d
+                                then in_left else in_right else in_right
+       | neg a, neg b => if rec a b then in_left else in_right
+  
+       | proposition a , box b c d | proposition a , diamond b c d => in_right
+       | proposition a , and b c | proposition a , or b c | proposition a , imp b c 
+       | proposition a , biImpl b c => in_right
+       | proposition a , neg b => in_right
+
+       | box a b c, proposition d => in_right 
+       | box a b c , diamond d e f => in_right
+       | box a b c, and d e | box a b c , or d e | box a b c , imp d e 
+       | box a b c , biImpl d e => in_right
+       | box a b c, neg d => in_right
+       | diamond a b c, proposition d => in_right 
+       | diamond a b c , box d e f => in_right
+       | diamond a b c, and d e | diamond a b c , or d e | diamond a b c , imp d e 
+       | diamond a b c , biImpl d e => in_right
+       | diamond a b c, neg d => in_right
+
+       | or a b, proposition d => in_right 
+       | or a b , box d e f => in_right
+       | or a b, and c d | or a b , imp c d
+       | or a b , biImpl c d => in_right
+       | or a b , diamond c d e => in_right
+       | or a b, neg c => in_right
+       | and a b, proposition d => in_right 
+       | and a b , box d e f => in_right
+       | and a b, or c d | and a b , imp c d
+       | and a b , biImpl c d => in_right
+       | and a b , diamond c d e => in_right
+       | and a b, neg c => in_right
+       | imp a b, proposition d => in_right 
+       | imp a b , box d e f => in_right
+       | imp a b, and c d | imp a b , or c d
+       | imp a b , biImpl c d => in_right
+       | imp a b , diamond c d e => in_right
+       | imp a b, neg c => in_right
+       | biImpl a b, proposition d => in_right 
+       | biImpl a b , box d e f => in_right
+       | biImpl a b, and c d | biImpl a b , or c d
+       | biImpl a b , imp c d => in_right
+       | biImpl a b , diamond c d e => in_right
+       | biImpl a b, neg c => in_right
+
+       | neg a, proposition b => in_right 
+       | neg a , box d e f => in_right
+       | neg a, and c d | neg a, imp c d
+       | neg a , biImpl c d => in_right
+       | neg a , diamond c d e => in_right
+       | neg a, or c d => in_right
+      end
+    }.
+
+  Check formula_eqDec.
 
   Notation " < t , pi >" := (diamond t pi) (left associativity, at level 69).
   Notation " [' t , pi ']" := (box t pi) (no associativity, at level 69).
-
-  Notation " a ---> b" := (impl a b) (left associativity, at level 79).
 
   (* We provide a proposition to state a data item of a port *)
 
@@ -715,6 +835,20 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
               end
     | _ => false
     end.
+
+  Lemma getDataSound: forall portsData, forall portsName, forall portData, 
+    getData portsData portsName portData = true -> exists x, exists name, exists data, 
+        In (x) (portsData) /\ x = dataPorts name data /\ (equiv_decb data portData) = true.
+  Proof.
+  intros.
+  induction portsData. intros. inversion H2.
+  intros. simpl in H2. case_eq a. intros. rewrite H3 in H2. 
+  apply IHportsData in H2. destruct H2. destruct H2. destruct H2.
+  destruct H2. destruct H4. exists x. exists x0. exists x1.
+  simpl. split. right. exact H2. split. exact H4. assumption.
+  intros. rewrite H3 in H2. exists a. exists n. exists d.
+  split. simpl. left. auto. auto.
+  Defined.
 
   (* We retrieve all states of the model which is related to a state v by R*)
   Fixpoint retrieveRelatedStatesFromV (setStates : set (state * state)) (s : state) 
@@ -809,7 +943,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | neg p => negb (singleModelStep m p s) 
     | and a b => (singleModelStep m a s) && (singleModelStep m b s)
     | or a b => (singleModelStep m a s) || (singleModelStep m b s)
-    | impl a b => negb (singleModelStep m a s) || (singleModelStep m b s)
+    | imp a b => negb (singleModelStep m a s) || (singleModelStep m b s)
     | biImpl a b => (negb (singleModelStep m a s) || (singleModelStep m b s)) &&
                     (negb (singleModelStep m b s) || (singleModelStep m a s)) 
     | box t pi p' => match pi with
@@ -831,7 +965,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    | neg a => negb (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s))) 
-                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                   | imp a b => (negb (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
                                                 (forallb (singleModelStep m b)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
@@ -862,7 +996,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                    | neg a => negb (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s))) 
-                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                   | imp a b => (negb (forallb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
                                                 (forallb (singleModelStep m b)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
@@ -900,7 +1034,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                    | neg a => negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo))))
-                                   | impl a b => (negb (forallb (singleModelStep m a)
+                                   | imp a b => (negb (forallb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (forallb (singleModelStep m b)
@@ -939,7 +1073,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    | neg a => negb (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s))) 
-                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                   | imp a b => (negb (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))) ||
                                                 (existsb (singleModelStep m b)
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
@@ -970,7 +1104,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
                                    | neg a => negb (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s))) 
-                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                   | imp a b => (negb (existsb (singleModelStep m a)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))) ||
                                                 (existsb (singleModelStep m b)
                                            ((retrieveRelatedStatesFromV (RTC(m)) s)))
@@ -1008,7 +1142,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                    | neg a => negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo))))
-                                   | impl a b => (negb (existsb (singleModelStep m a)
+                                   | imp a b => (negb (existsb (singleModelStep m a)
                                            (flat_map (retrieveRelatedStatesFromV (R(Fr(m)))) 
                                                     (getNuPiReachedState m [t] (program2SimpProgram reo))))) ||
                                                 (existsb (singleModelStep m b)
@@ -1033,27 +1167,27 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Lemma singleModelStepSound_1 : forall m, forall n, forall phi, forall s, 
    phi = proposition n /\ (V(m) s n) = true -> singleModelStep m phi s = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. exact H4.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
   Defined.
 
   Lemma singleModelStepSound_2 : forall m, forall phi, forall phi', forall s, 
    phi = neg phi' /\ (singleModelStep m phi' s) = false -> (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. rewrite H4. reflexivity.
+  intros. destruct H2. rewrite H2. simpl. rewrite H3. reflexivity.
   Defined.
 
   Lemma singleModelStepSound_3 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (and phi' phi'') /\ ((singleModelStep m phi' s) && (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. exact H4.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
   Defined.
 
   Lemma singleModelStepSound_4 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. exact H4.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
   Defined.
 
   Lemma singleModelStepSound_5 : forall m, forall phi, forall phi', forall phi'', forall s,
@@ -1061,14 +1195,14 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                (negb (singleModelStep m phi'' s) || (singleModelStep m phi' s))  = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. exact H4.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
   Defined.
 
   Lemma singleModelStepSound_6 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H3. rewrite H3. simpl. exact H4.
+  intros. destruct H2. rewrite H2. simpl. exact H3.
   Defined.
 
   (* The evaluation of an atomic formula is done as follows *)
@@ -1081,19 +1215,19 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
 
   (*Dynamic Logic Axioms*)
 
-  Definition axiomK (phi: option formula) : option formula :=
+  Definition axiomK (phi: option (formula)) : option (formula) :=
     match phi with
-    | Some (box t pi (impl phi' phi'')) => Some (impl (box t pi phi') (box t pi phi''))
+    | Some (box t pi (imp phi' phi'')) => Some (imp (box t pi phi') (box t pi phi''))
     | _ => None
     end.
 
-  Definition axiomAnd (phi : option formula) : option formula :=
+  Definition axiomAnd (phi : option (formula)) : option (formula) :=
     match phi with
     | Some (box t pi (and phi' phi'')) => Some ( and (box t pi phi') (box t pi phi''))
     | _ => None
     end.
 
-  Definition axiomDu (phi: option formula) : option formula :=
+  Definition axiomDu (phi: option (formula)) : option (formula) :=
     match phi with
     | Some (box t pi (neg phi')) => Some (neg (diamond t pi phi'))
     | Some (neg (diamond t pi phi')) => Some (box t pi (neg phi') )
@@ -1101,13 +1235,13 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     end.
 
 
-  Definition axiomR (phi: option formula) : option formula :=
+  Definition axiomR (phi: option (formula)) : option (formula) :=
     match phi with
     | Some (diamond t pi phi) => Some phi
     | _ => None
     end.
 
-  Definition axiomIt (phi: option formula) : option formula :=
+  Definition axiomIt (phi: option (formula)) : option (formula) :=
     match phi with
     | Some (and (phi') (box t (sProgram pi) (box t' (star pi') phi''))) => if (equiv_decb phi' phi'')(*&&
         (equiv_decb pi pi') then *) then
@@ -1120,9 +1254,9 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   (*29/07/2020 os axiomas não serão usados aqui
     para provas sintáticas. Isso vai ficar pro nosso Tableaux *)
 
-  Definition axiomInd (phi: option formula) : option formula :=
+  Definition axiomInd (phi: option (formula)) : option (formula) :=
     match phi with
-    | Some (and (phi') (box t pi (impl (phi'') (box t' (star pi') phi''')))) => Some (box t (star pi') phi')
+    | Some (and (phi') (box t pi (imp (phi'') (box t' (star pi') phi''')))) => Some (box t (star pi') phi')
     | _ => None
     end.
 
@@ -1150,8 +1284,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
         end
      }.
 
-  Print dataProp_eqdec2.
-
   (* A model checker for ReLo *)
 
   Definition emptyLambda (s : state) (n: name) := 0%Q.
@@ -1161,8 +1293,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   Definition emptyVal (s : state) (prop : dataProp name data) : bool := false.
 
   Definition emptyModel := mkmodel ( mkframe [] [] emptyLambda emptyDelta ) (emptyVal).
-
-  Check emptyModel.
 
   Definition retrieveSinglePortProp (t : set (dataConnector name data)) (index : nat) (n : name)
     : set (dataProp name data) :=
@@ -1193,7 +1323,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | a::t' => portsHaveSameData a n++(retrieveTwoPortsProp index t' n)
     end.
 
-  Fixpoint constructSetOfStates (phi: formula (set (dataConnector name data))
+  Fixpoint constructSetOfStates (phi: (formula) (set (dataConnector name data))
     (syntaticProgram name)) (n: nat) : set nat :=
     match phi with 
     | proposition p => [n]
@@ -1202,7 +1332,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
     | or a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
-    | impl a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
+    | imp a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
     | biImpl a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
@@ -1306,8 +1436,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     propCounter : nat
   }.
 
-  Check calcProps.
-
 (*   (*Returns the index of propositions construted at a specific state *)
   Fixpoint getIndexOfProps (setProps: set (nat * (dataProp name data))) : set (dataProp name data) :=
     match setProps with
@@ -1327,13 +1455,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
       (getDelta dataMarkups))
       (getValFunction (statesAndProps (getNewValFunc calc N [t] dest))).
   (*ERICK: o [t] é para reaproveitar o que já funciona *)
-
-(*   Definition concatenateModels (m1: model name nat data) (m2: model name nat data) (t: set (set(dataConnector name data))) 
-    (n: set name) (index : nat) (dataMarkups : (set (nat * (set (dataConnector name data))))) :=
-    (*ERICK: Corrigir o uso de t na getValFunctionProp na função abaixo*)
-    mkmodel 
-      (mkframe (set_union equiv_dec (S(Fr(m1))) (S(Fr(m2)))) (set_union equiv_dec (R(Fr(m1))) (R(Fr(m2)))) 
-        (lambda(Fr(m1))) (getDelta dataMarkups)) (getValFunctionProp n (hd [] t) index). *)
 
 
   (* The following definition is employed in deriving the model of neg p based on the model for p, 
@@ -1375,10 +1496,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | visState::moreStates => ((getVisitedState' visState visStates), visState)::(getVisitedStates moreStates visStates)
     end.
 
-  Check getVisitedStates.
-
   (* Now a new index is allocated to the ones not visitated - Only useful to get destination states *)
-  (* Erick : Talvez o problema do não deterministico esteja aqui *)
   Fixpoint liftIndex (index : nat) (currentStates : set (option nat * set (dataConnector name data))) := 
     match currentStates with
     | [] => []
@@ -1387,8 +1505,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                               | Some a => (a,(snd(visState)))::(liftIndex index moreStates)
                               end 
     end.
-
-  Check liftIndex.
 
   Definition getNewIndexesForStates (t : set (set (dataConnector name data))) 
       (visStates: set (nat * (set (dataConnector name data)))) (index : nat) :=
@@ -1438,8 +1554,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   (*Now we need to glue the pieces together to process the entire current states obtained by f(t)*)
-  (*Change : Calc is now also output by processGeneralStep *)
-
   Fixpoint processGeneralStep (m: model name nat data) (N: set name)(visitedStates : (set (nat * (set (dataConnector name data)))))
   (calc : calcProps) (currentSetOfStates : set (nat * set (dataConnector name data)))
   (pi : (reoProgram name)) (index : nat) :=
@@ -1515,18 +1629,18 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
     (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well -not required as they
       have the same starting point.*)
-    | and a b | or a b | impl a b | biImpl a b => (getModel' (getModel' m n t index a setStates calc) n t index b setStates calc)
+    | and a b | or a b | imp a b | biImpl a b => (getModel' (getModel' m n t index a setStates calc) n t index b setStates calc)
     | neg a => (getModel' m n t index a setStates calc)
     end.
 
-  Fixpoint testGetModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
+  Fixpoint getSetVisitedStates (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
     (*setStates : set of already visited states *)
     (*This is the new version of old "getVisitedStates"*)
     match phi with
     | proposition p => setStates
     | diamond t' pi p => match pi with
-                        | sProgram pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                        | sProgram pi' => getSetVisitedStates (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
                                           (f(t)(program2SimpProgram (pi')))
@@ -1536,7 +1650,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (*calculateAmountNewStates (setStates) index*)
                                           (*index end*)
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
-                        | star pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                        | star pi' => getSetVisitedStates (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
                                           (f(t)(program2SimpProgram (pi')))
@@ -1548,7 +1662,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
     | box t' pi p => match pi with 
-                        | sProgram pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                        | sProgram pi' => getSetVisitedStates (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
                                           (f(t)(program2SimpProgram (pi')))
@@ -1558,7 +1672,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (*calculateAmountNewStates (setStates) index*)
                                           (*index end*)
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
-                        | star pi' => testGetModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                        | star pi' => getSetVisitedStates (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
                                           (f(t)(program2SimpProgram (pi')))
@@ -1570,11 +1684,11 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
     (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well.*)
-    | and a b | or a b | impl a b | biImpl a b => (testGetModel (getModel' m n t index a setStates calc) n t index b setStates calc)
-    | neg a => (testGetModel m n t index a setStates calc) 
+    | and a b | or a b | imp a b | biImpl a b => (getSetVisitedStates (getModel' m n t index a setStates calc) n t index b setStates calc)
+    | neg a => (getSetVisitedStates m n t index a setStates calc) 
     end.
 
-  (*ONGOING: Iteration of programs - Useful for the model construction (the standard star verification is done by means of the RTC) *)
+  (* Below definition formalizes the iteration expansion for the model generator *)
 
   Fixpoint expandStarFormulas (m : model name nat data) (n : set name) (t : set (set (dataConnector name data))) (index:nat)
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) (upperBound : nat) :=
@@ -1625,20 +1739,86 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                                       ((getModel' m n t index (p) setStates calc),(setStates,upperBound)) else 
                                                       expandStarFormulas m n t index (diamond t' (sProgram pi') p) setStates calc k
                                          end
-                       (* Should not enter here*) 
+                       (*Acho que cláusula abaixo tem qhe chamar a getModel', ou atualizar isso na getModel.*)
                        | _ => ( m, (setStates, 0))
                        end
     end.
 
+(*We may finally define the model generator by means of the following function, which joins the search procedure *)
 
-(*TODO falta definir a getModel p juntar getModel' e expandStarFormulas *)
-(*   Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
-    (phi: (formula name data)) :=
-    getModel' (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0). *)
+Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
+    (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) (upperBound : nat) :=
+    (* upperBound - limits the search space for \star if no satisfiable model could be found until <upperBound> iterations *)
+    (* setStates : set of already visited states *)
+    (* index always start from 1 in the beggining of a run as it is the first available index for a state (0 is already for the initial *)
+    (* state *)
+    match phi with
+    | proposition p => m
+    | diamond t' pi p => match pi with
+                        | sProgram pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi')))
+                                          (*index begin *) 
+                                          (fst(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index) ))))
+                                          (*index end*)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index)))
+                                          (*calc begin*) 
+                                          (snd(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index)))))
+                                          (*calc end*) upperBound
+                        | star pi' => fst(expandStarFormulas m
+                                          n 
+                                          (t)
+                                          (*index begin *) 
+                                          (index)
+                                          (*index end*)
+                                          p (setStates) 
+                                          (*calc begin*) 
+                                          (calc)
+                                          (*calc end*) upperBound)
+                        end
+    | box t' pi p => match pi with 
+                        | sProgram pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
+                                          n 
+                                          (f(t)(program2SimpProgram (pi')))
+                                          (*index begin *) 
+                                          (fst(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index) ))))
+                                          (*index end*)
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index)))
+                                          (*calc begin*) 
+                                          (snd(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index)))))
+                                          (*calc end*) upperBound
+                        | star pi' => fst(expandStarFormulas m
+                                          n 
+                                          (t)
+                                          (*index begin *) 
+                                          (index)
+                                          (*index end*)
+                                          p (setStates) 
+                                          (*calc begin*) 
+                                          (calc)
+                                          (*calc end*) upperBound)
+                        end
 
- Fixpoint getCalc (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
+    (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well -not required as they
+      have the same starting point.*)
+    | and a b | or a b | imp a b | biImpl a b => (getModel (getModel m n t index a setStates calc upperBound) n t index b setStates calc) upperBound
+    | neg a => (getModel m n t index a setStates calc upperBound)
+    end.
+
+(* And then we define the top level function that will build the model. *)
+  Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
+    (phi: (formula name data)) (upperBound : nat) :=
+    getModel (buildPropModel n (hd [] t) 0) n t 1 phi (getNewIndexesForStates t [] 0) (mkcalcProps [] 0) upperBound.
+
+(*Returns the calc structure of a model construction run *)
+ Fixpoint getCalc (m: model name nat data) (n: set name) (t: set (set (dataConnector name data))) (index:nat)
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
-    (*setStates : set of already visited states *)
     match phi with
     | proposition p => calc
     | diamond t' pi p => match pi with
@@ -1662,7 +1842,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
     | box t' pi p => match pi with 
-                        | sProgram pi' =>getCalc (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                        | sProgram pi' => getCalc (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
                                           (f(t)(program2SimpProgram (pi')))
@@ -1692,7 +1872,268 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | _ => calc
     end.
 
-  End ModelExecution.
+  End ModelExecution. 
+
+  Section TableauDef.
+
+  Variable state name data tableauFormula : Type.
+
+  (*We define a tree structure to denote the tableau configuration*)
+  Inductive binTree : Type :=
+  | nilLeaf : binTree
+  | leaf : (state * (((formula name data)) * bool)) -> binTree
+  | node : (state * (((formula name data)) * bool)) -> binTree -> binTree -> binTree.
+
+  
+  (*A Tableau for Relo is defined as a Coq record containing the proof tree and the sequence of states it "visits"*)
+  Record tableau := mkTableau {
+    proofTree : binTree;
+    statesTree : set (state * state)  (*Transformar em arvore*)
+  }.
+
+  End TableauDef.
+
+  Section TableauFunc.
+  (*Tableau-related functionalities.*)
+  (* Tableau-related definitions has been splitted in two different functions to enable its formalization with states, 
+    as well as with states as natural numbers (useful for automating its construction *)
+
+  Variable state name data : Type.
+
+  (*Retundant definition, but needed for the usade of EqDec for data (if one employs nat as the data domain *)
+  Program Instance nat_eqDec : EqDec (nat) eq :=
+  { equiv_dec := fix rec x y :=
+    match x,y with
+    | 0, 0 => in_left
+    | Datatypes.S n, Datatypes.S m => if rec n m then in_left else in_right
+    |  0, Datatypes.S n | Datatypes.S n, 0 => in_right
+    end
+  }.
+
+  Check tableau.
+
+  Check formula_eqDec.
+
+  Definition formula2Tableau (phi: formula name data) :=
+    mkTableau (leaf (0, (phi, false))) ([]).
+
+  (*We use state as a natural number to easily instantiate a new state*)
+  (*Usage by tableauRules : *)
+  (*t : complete tableau *)
+  (*t' : result of application of rule *)
+  Fixpoint addLeftToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t'
+    | leaf phi => ((node phi) t' (nilLeaf _ _ _))
+    | node phi a b => (node phi) (addLeftToTableau a t') ((addLeftToTableau b t'))
+  end.
+
+  Fixpoint addRightToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t'
+    | leaf phi => ((node phi) (nilLeaf _ _ _) t')
+    | node phi a b => (node phi) (addRightToTableau a t') ((addRightToTableau b t'))
+  end.
+
+  (* Equality for formula usage in this section needs to be parametrized, and supplied within usage*)
+
+  Context `(eqa: EqDec (formula name data) eq).
+
+  Fixpoint searchBinTree (t: binTree nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
+  match t with
+  | nilLeaf _ _ _ => false
+  | leaf phi => (equiv_decb (fst(nodeContent)) (fst(phi))) && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi)))) 
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) 
+  | node phi a b => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then true
+                else searchBinTree (a) nodeContent || searchBinTree b nodeContent
+  end.
+
+  Fixpoint tableauRules (* t: tableau nat name data *) 
+  (t: binTree nat name data) (origT:  binTree nat name data) (statesTree : set (nat * nat)) (nodeContent : nat * (((formula name data)) * bool)) 
+  (*t: proof tree to have its rules applied*)
+  (*t': original proof tree, a copy of t. Needed so we don't lose the original tree when decomposing it.*) :=
+  match (* (proofTree(t)) *) t with
+  (*TODO: para o caso do box e diamond, avaliar o programa e aplicar a regra conforme necessário (se for ou não star)*)
+  | nilLeaf _ _ _ => (t, statesTree)
+  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then 
+                match (fst(snd(phi))) with
+                | proposition p => (origT, statesTree)
+                | and phi1 phi2 => if (snd(snd(phi))) then
+                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
+                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                | or phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) , ([]))
+                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                | neg phi1 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
+                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                | box t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )), ([]))
+                                   else  ((addLeftToTableau (origT) ((node ((Datatypes.S(fst(phi))), (p , false)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
+                | diamond t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                    ((addLeftToTableau (origT) ((node ((Datatypes.S (fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
+                                   else (t,statesTree)
+                | imp phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))), ([]))
+                                   else (origT, statesTree) (* ou colocar a regra do false aqui *)
+                | _ => (t, statesTree)
+                end
+                else (t, statesTree)
+  | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then 
+                match (fst(snd(phi))) with
+                | proposition p => (origT, statesTree)
+                | and phi1 phi2 => if (snd(snd(phi))) then
+                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
+                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                | or phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) , ([]))
+                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                | neg phi1 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
+                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                | box t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )), ([]))
+                                   else  ((addLeftToTableau (origT) ((node ((Datatypes.S(fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
+                | diamond t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                    ((addLeftToTableau (origT) ((node ((Datatypes.S (fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
+                                   else (t,statesTree)
+                | imp phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (origT) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))), ([]))
+                                   else (origT, statesTree) (* ou colocar a regra do false aqui *)
+                | _ => (origT, statesTree)
+                end
+                (*Not in the actual node: keep searching in both left and right nodes of t*)
+                else ((node phi (fst(tableauRules x origT statesTree nodeContent)) 
+                               (fst(tableauRules y origT statesTree nodeContent))), statesTree)
+  end.  
+
+  Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
+    (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent)) 
+              (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent))). 
+
+(*   Fixpoint tableauRules (t: binTree nat name data (* t: tableau nat name data *)) (nodeContent : nat * (((formula)) * bool)) 
+  (*:  tableau nat name data *) :=
+  match (* (proofTree(t)) *) t with
+  | nilLeaf _ _ _ => t
+  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then 
+                match (fst(snd(phi))) with
+                | proposition p => t
+                | and phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | or phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) ([])
+                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))) ([]) (* ou colocar a regra do false aqui *)
+                | neg phi1 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) (leaf ((fst(phi)), (((phi1)) , false)))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | box t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([])
+                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
+                | diamond t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S (fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
+                                   else t
+                | imp phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | _ => t
+                end
+                else t
+  | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then
+                match (fst(snd(phi))) with
+                | proposition p => t
+                | and phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | or phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) ([])
+                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))) ([])
+                | neg phi1 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) (leaf ((fst(phi)), (((phi1)) , false)))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | box t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([])
+                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
+                | diamond t' pi p => if (snd(snd(phi))) then
+                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
+                                   Dai, o tableau tem que ser passado como parâmetro*)
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
+                                   else t
+                | imp phi1 phi2 => if (snd(snd(phi))) then
+                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
+                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))) ([])
+                                   else t (* ou colocar a regra do false aqui *)
+                | _ => t
+                end
+                (*Not in the actual node: keep searching in both left and right nodes of t*)
+                else (* mkTableau (node phi (proofTree(tableauRules (mkTableau x (statesTree t)) nodeContent)) 
+                               (proofTree(tableauRules (mkTableau x (statesTree t)) nodeContent))) (statesTree t) *) t
+  end.   *)
+
+  End TableauFunc.
 (*   End ReoLogicCoq. *)
 
 Require Export ListSet.
@@ -1700,3 +2141,4 @@ Require Export List.
 Require Export Classes.EquivDec.
 Require Export Coq.Program.Program.
 Require Export QArith.
+(* Require Export Coq.Strings.String. *)

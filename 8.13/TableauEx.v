@@ -1,8 +1,6 @@
 Require Import LogicMain.
 Import ListNotations.
 
-Close Scope Q_scope.
-
 Obligation Tactic := congruence.
 
 Inductive ports := A | B | C | D | E | F | G.
@@ -61,7 +59,7 @@ Program Instance portsEq : EqDec ports eq :=
 		| G,F => in_right 
 		end 
 	}.
-
+ 
 Inductive statesLossyFifo := D_A | D_B | D_C | D_BFIFOC.
 
 Program Instance statesLossyFifoEqDec : EqDec statesLossyFifo eq := 
@@ -86,6 +84,7 @@ Program Instance statesLossyFifoEqDec : EqDec statesLossyFifo eq :=
 
 		end 
 	}.
+
 
 Inductive statesSequencer := DA | DB | DC | DD | DE | DF | DG | D_DFIFOE | D_EFIFOF | D_FFIFOG.
 
@@ -195,59 +194,80 @@ Program Instance statesEqDec : EqDec statesSequencer eq :=
 		end 
 	}.
 
-Definition nonDetProg := [flowSync E A; flowSync B A ; flowFifo A C; flowSync A D].
+Close Scope Q_scope.
 
-Definition t := [[dataPorts E 1; dataPorts B 0]].
+Check formula_eqDec.
 
-Definition pi := sProgram (reoProg nonDetProg []).
+Check dataProp_eqdec.
 
-Check f.
+Definition lossyFifoProgram := [flowLossySync A B;flowFifo B C].
 
-Definition step1 := f t (program2SimpProgram (reoProg nonDetProg [])).
+(*Test1 - LossyFifo *)
 
-Eval compute in step1.
+Definition t' := [dataPorts A 0].
 
-Definition step2 := f (step1) (program2SimpProgram (reoProg nonDetProg [])).
+Definition pi' := sProgram (reoProg lossyFifoProgram []).
 
-Eval compute in step2.
+Definition piStar := star (reoProg lossyFifoProgram []).
 
-Definition t' := [[dataPorts A 0];[dataPorts A 1]].
+Definition formula1 := formula2Tableau
+  (box t' pi' 
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))).
 
-Definition stepa := f (t') (program2SimpProgram (reoProg nonDetProg [])).
+Definition formula2 := {|
+         proofTree :=
+           leaf
+             (0,
+             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+             true));
+         statesTree := []
+       |}.
 
-Eval compute in stepa.
+Eval compute in formula1.
 
-(*Tests with this model*)
+Eval compute in formula2.
 
-Definition N := [A;B;C;D;E].
+ Program Instance dataProp_eqdec : EqDec (dataProp ports nat) eq :=
+  {
+    equiv_dec x y :=
+      match x, y with
+        | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+        | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+        | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+        | dataInPorts a x , dataInFifo b y c => in_right
+        | dataInPorts a x , dataBothPorts _ b y => in_right
+        | dataInFifo a x b , dataInPorts c y => in_right
+        | dataInFifo a x b , dataBothPorts _ c y => in_right
+        | dataBothPorts _ a b , dataInPorts c y => in_right
+        | dataBothPorts _ a b , dataInFifo c y d  => in_right
+      end
+  }.
 
-(*ERICK : só pega o primeiro dos estados *)
-Definition model1 := getModel' (emptyModel ports nat nat) [A;B;C;D;E] t (1) 
-            (box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))) 
-            (getNewIndexesForStates t [] 0) 
-            (mkcalcProps [] 0).
+(*To employ the tableau, one needs to supply the equality relation defined, the proof tree and
+  the specificnode content (i.e, the state, the formulae and its value in the state to apply the
+  corresponding rule to the corresponding node *)  
 
-Eval compute in model1.
+Definition formulaApp1 := applyRule (formula_eqDec portsEq nat_eqDec) (formula1)
+    (0,
+             (box [dataPorts A 0]
+                (sProgram
+                   (reoProg [flowLossySync A B; flowFifo B C] []))
+                (or (proposition (dataInPorts A 1))
+                   (proposition (dataInPorts B 1))), false)).
 
-Definition model1Test := getSetVisitedStates (emptyModel ports nat nat) [A;B;C;D;E] t (length (getNewIndexesForStates t [] 0)) 
-            (box [] pi(box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))))
-            (getNewIndexesForStates t [] 0) 
-            (mkcalcProps [] 0).
+Definition formulaApp2 := tableauRules (formula_eqDec portsEq nat_eqDec) (proofTree(formula2)).
 
-Eval compute in model1Test.
+Eval compute in formulaApp1.
+
+Definition formulaCompApp1 := applyRule (formula_eqDec portsEq nat_eqDec) 
+            (formulaApp1) 
+               (1,
+                (or (proposition (dataInPorts A 1))
+                   (proposition (dataInPorts B 1)), false)).
+(*applies twice because it have two repeated nodes. Must be fixed (only happens with "or" branching *)
+Eval compute in formulaCompApp1.
 
 
-(*Halt tests *)
 
-Definition flowtestHalt := [flowSync B C; flowFifo A C].
-Definition blockTestHalt := [flowaSyncdrain A B].
-
-Definition t2 : list (dataConnector ports nat) := [dataPorts A 0].
-
-Definition nPi := parse (program2SimpProgram (reoProg flowtestHalt blockTestHalt)) [].
-
-Eval compute in nPi.
-
-Eval compute in f [t2] (program2SimpProgram (reoProg flowtestHalt blockTestHalt)).
 
 
