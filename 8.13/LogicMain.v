@@ -185,15 +185,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
      not in s"*)
   Record model := mkmodel {
     Fr  : frame;
-    V : state -> (* nat *) (dataProp name data) -> bool (*As of 16-04, a função de valoração foi trocada p esta assinatura.*)
-                              (*Erick : por questões operacionais (i.e., o que exatamente é um pattern em cima de Prop)
-                                Acho que devemos criar uma gramática p falar de proposições.*)
-                              (*edit: 10/05 - pode ser o caso de ser uma função state -> prop, e o retorno é uma
-                                proposição que denota que a proposição é realmente válida num estado. Parece
-                                ser a forma padrão de formalizar modelos de Kripke no Coq.*)
-                              (*edit: 10/05 - 2 - trocando p nat segundo a ideia explicada no exemplo, baseada
-                                em outras implementações de Kripke semantics em Coq.*)
-                              (*27/02/21 - Changed from Prop approach to an inductive type approach*)
+    V : state -> (* nat *) (dataProp name data) -> bool 
   }.
 
 
@@ -1251,9 +1243,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | _ => None
     end.  
 
-  (*29/07/2020 os axiomas não serão usados aqui
-    para provas sintáticas. Isso vai ficar pro nosso Tableaux *)
-
   Definition axiomInd (phi: option (formula)) : option (formula) :=
     match phi with
     | Some (and (phi') (box t pi (imp (phi'') (box t' (star pi') phi''')))) => Some (box t (star pi') phi')
@@ -1385,11 +1374,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | a::t => if (equiv_decb a n) then true else getProp t n
     end.
 
-  (*aqui teremos dois nat: um indicando o index das proposições e p o que denota a proposição em si. *)
-  (*ERICK: Aparentemente tem dois indices repetidos ali embaixo:
-    index: estado que quero calcular
-    s ;estado a avaliar (pela assinatura da função. A grosso modo, S = index)
-    p : prop -> verificar*)
    Definition getValFunctionProp (N: set name) (t:set (dataConnector name data)) (index: nat) (s:nat) (p:(dataProp name data)) :=
     getProp ((buildValidPropositions N index t )) p.
 
@@ -1427,21 +1411,11 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                  else getValFunction moreProps state prop
     end.
 
-  (*ERICK: a ideia é computar primeiro o conjunto nat * Prop onde tenho o mapa das proposições para um índice natural. Depois,
-    preciso calcular o mapa nat * set nat, onde nat é o estado e set nat é o conjunto de proposições válidas naquele estado.*)
-
   (* Auxiliary record to hold the global index of props*)
   Record calcProps := mkcalcProps {
     statesAndProps : set (nat * set (dataProp name data));
     propCounter : nat
   }.
-
-(*   (*Returns the index of propositions construted at a specific state *)
-  Fixpoint getIndexOfProps (setProps: set (nat * (dataProp name data))) : set (dataProp name data) :=
-    match setProps with
-    | [] => []
-    | prop::moreProps => set_union equiv_dec [snd(prop)] (getIndexOfProps moreProps)
-    end. *)
 
   Definition getNewValFunc (calc: calcProps) (N: set name) (t:set (set (dataConnector name data))) (state: nat) :=
   mkcalcProps (set_add equiv_dec (state,flat_map (buildValidPropositions N (propCounter(calc))) t) (statesAndProps calc)) 
@@ -1454,8 +1428,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
       (mkframe (set_add equiv_dec dest (S(Fr(m)))) (set_add equiv_dec (origin,dest) (R(Fr(m)))) (lambda(Fr(m))) 
       (getDelta dataMarkups))
       (getValFunction (statesAndProps (getNewValFunc calc N [t] dest))).
-  (*ERICK: o [t] é para reaproveitar o que já funciona *)
-
 
   (* The following definition is employed in deriving the model of neg p based on the model for p, 
       p a proposition *)
@@ -1900,7 +1872,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
 
   Variable state name data : Type.
 
-  (*Retundant definition, but needed for the usade of EqDec for data (if one employs nat as the data domain *)
+  (*Requierd definition for the usage of EqDec for data (if one employs nat as the data domain *)
   Program Instance nat_eqDec : EqDec (nat) eq :=
   { equiv_dec := fix rec x y :=
     match x,y with
@@ -1928,6 +1900,25 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     | node phi a b => (node phi) (addLeftToTableau a t') ((addLeftToTableau b t'))
   end.
 
+
+  (*Special case to add the branching-related functions (the branches must be attached to the last node of the proof tree, otherwise it
+    repeats itself *)
+  (* Does not reconstruct the tableau. This is done by the main function.*)
+  Fixpoint addBranchLeftToTableau (t : binTree nat name data) (b1 : binTree nat name data) (b2 : binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t
+    | leaf phi => ((node phi) (b1) (b2))
+    | node phi a b => (* (node phi) (addBranchLeftToTableau a b1 b2) ((addBranchLeftToTableau b b1 b2)) *)
+                      (addBranchLeftToTableau a b1 b2)
+  end.
+
+  Fixpoint addBranchLeftToTableau' (t : binTree nat name data) (b1 : binTree nat name data) (b2 : binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t
+    | leaf phi => ((node phi) (b1) (b2))
+    | node phi a b =>  (node phi) (addBranchLeftToTableau a b1 b2) ((addBranchLeftToTableau b b1 b2))
+  end.
+
   Fixpoint addRightToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
   match t with
     | nilLeaf _ _ _ => t'
@@ -1950,6 +1941,10 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 else searchBinTree (a) nodeContent || searchBinTree b nodeContent
   end.
 
+  (* Required in order to correctly parametrize the corresponding EqDec *)
+  Definition equalForumla (f1: (formula name data)) (f2: (formula name data)) :=
+    equiv_decb f1 f2.
+
   Fixpoint tableauRules (* t: tableau nat name data *) 
   (t: binTree nat name data) (origT:  binTree nat name data) (statesTree : set (nat * nat)) (nodeContent : nat * (((formula name data)) * bool)) 
   (*t: proof tree to have its rules applied*)
@@ -1957,7 +1952,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   match (* (proofTree(t)) *) t with
   (*TODO: para o caso do box e diamond, avaliar o programa e aplicar a regra conforme necessário (se for ou não star)*)
   | nilLeaf _ _ _ => (t, statesTree)
-  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
                                                                && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
                 then 
                 match (fst(snd(phi))) with
@@ -1965,78 +1960,91 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 | and phi1 phi2 => if (snd(snd(phi))) then
                                     ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
                                                                (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                                   else ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))))
+                                                                    , ([]))
                 | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) , ([]))
-                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , true)))
+                                                                    (leaf ((fst(phi)), (phi2 , true))))
+                                                                    , ([]))
+                                   else ((addBranchLeftToTableau (origT) (node ((fst(phi)), (phi1 , false))  
+                                            (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data))
+                                                                    (nilLeaf nat name data))
+                                                                    , ([]))
+                                      (* ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                            (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) *) (* ou colocar a regra do false aqui *)
                 | neg phi1 => if (snd(snd(phi))) then
                                    ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
-                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                                   else ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
                 | box t' pi p => if (snd(snd(phi))) then
                                    (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
                                    Dai, o tableau tem que ser passado como parâmetro*)
-                                   ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                   ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))
                                                                   )), ([]))
-                                   else  ((addLeftToTableau (origT) ((node ((Datatypes.S(fst(phi))), (p , false)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                   else  ((addLeftToTableau (origT) ((leaf ((Datatypes.S(fst(phi))), (p , false)))
                                                                   )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
                 | diamond t' pi p => if (snd(snd(phi))) then
                                    (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
                                    Dai, o tableau tem que ser passado como parâmetro*)
-                                    ((addLeftToTableau (origT) ((node ((Datatypes.S (fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                    ((addLeftToTableau (origT) ((leaf ((Datatypes.S (fst(phi))), (p , true)))
                                                                   )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                                   else (t,statesTree)
+                                   else ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))
+                                                                  )), ([]))
                 | imp phi1 phi2 => if (snd(snd(phi))) then
                                    ((addLeftToTableau (origT) ((node phi)  
                                                                (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))), ([]))
-                                   else (origT, statesTree) (* ou colocar a regra do false aqui *)
+                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) 
                 | _ => (t, statesTree)
                 end
                 else (t, statesTree)
-  | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+  (*nao passar o no original: as funç~oes estao corretas. o que t´a acontecendo ´e que voce ta reconstruindo a ´arvore do inicio 
+    2x *)
+  | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
                                                                && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
                 then 
-                match (fst(snd(phi))) with
+                 match (fst(snd(phi))) with
                 | proposition p => (origT, statesTree)
                 | and phi1 phi2 => if (snd(snd(phi))) then
-                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                    ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
                                                                (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                                   else ((addBranchLeftToTableau' (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))))
+                                                                    , ([]))
                 | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) , ([]))
-                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                   ((addBranchLeftToTableau' (node phi x y) (leaf ((fst(phi)), (phi1 , true)))
+                                                                    (leaf ((fst(phi)), (phi2 , true))))
+                                                                    , ([]))
+                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , false))  
                                                                (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
                 | neg phi1 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
-                                   else (t, statesTree) (* ou colocar a regra do false aqui *)
+                                   ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
+                                   else ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
                 | box t' pi p => if (snd(snd(phi))) then
                                    (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
                                    Dai, o tableau tem que ser passado como parâmetro*)
-                                   ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                   ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , true)))
                                                                   )), ([]))
-                                   else  ((addLeftToTableau (origT) ((node ((Datatypes.S(fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                   else  ((addLeftToTableau (node phi x y) ((leaf ((Datatypes.S(fst(phi))), (p , false)))
                                                                   )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
                 | diamond t' pi p => if (snd(snd(phi))) then
                                    (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
                                    Dai, o tableau tem que ser passado como parâmetro*)
-                                    ((addLeftToTableau (origT) ((node ((Datatypes.S (fst(phi))), (p , true)) 
+                                    ((addLeftToTableau (node phi x y) ((node ((Datatypes.S (fst(phi))), (p , true)) 
                                                                   (nilLeaf nat name data) (nilLeaf nat name data))
                                                                   )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                                   else (t,statesTree)
+                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true)) 
+                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
+                                                                  )), ([]))
                 | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))), ([]))
-                                   else (origT, statesTree) (* ou colocar a regra do false aqui *)
-                | _ => (origT, statesTree)
+                                   ((addBranchLeftToTableau' (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))))
+                                                                    , ([]))
+                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) 
+                | _ => (t, statesTree)
                 end
-                (*Not in the actual node: keep searching in both left and right nodes of t*)
+                (*Not in the actual node: keep searching in both left and right nodes of the current level o t*)
                 else ((node phi (fst(tableauRules x origT statesTree nodeContent)) 
                                (fst(tableauRules y origT statesTree nodeContent))), statesTree)
   end.  
@@ -2044,94 +2052,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
     (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent)) 
               (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent))). 
-
-(*   Fixpoint tableauRules (t: binTree nat name data (* t: tableau nat name data *)) (nodeContent : nat * (((formula)) * bool)) 
-  (*:  tableau nat name data *) :=
-  match (* (proofTree(t)) *) t with
-  | nilLeaf _ _ _ => t
-  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
-                then 
-                match (fst(snd(phi))) with
-                | proposition p => t
-                | and phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | or phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) ([])
-                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , false))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))) ([]) (* ou colocar a regra do false aqui *)
-                | neg phi1 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) (leaf ((fst(phi)), (((phi1)) , false)))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | box t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([])
-                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
-                | diamond t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S (fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
-                                   else t
-                | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | _ => t
-                end
-                else t
-  | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
-                then
-                match (fst(snd(phi))) with
-                | proposition p => t
-                | and phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | or phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , true))) (leaf ((fst(phi)), (phi2 , true))))) ([])
-                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (phi1 , false))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))) ([])
-                | neg phi1 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) (leaf ((fst(phi)), (((phi1)) , false)))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | box t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((fst(phi)), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([])
-                                   else mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
-                | diamond t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node ((Datatypes.S(fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )) ([((fst(phi)), (Datatypes.S (fst(phi))))])
-                                   else t
-                | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   mkTableau (addLeftToTableau (proofTree(t)) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))) ([])
-                                   else t (* ou colocar a regra do false aqui *)
-                | _ => t
-                end
-                (*Not in the actual node: keep searching in both left and right nodes of t*)
-                else (* mkTableau (node phi (proofTree(tableauRules (mkTableau x (statesTree t)) nodeContent)) 
-                               (proofTree(tableauRules (mkTableau x (statesTree t)) nodeContent))) (statesTree t) *) t
-  end.   *)
 
   End TableauFunc.
 (*   End ReoLogicCoq. *)

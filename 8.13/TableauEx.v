@@ -264,8 +264,103 @@ Definition formulaCompApp1 := applyRule (formula_eqDec portsEq nat_eqDec)
                (1,
                 (or (proposition (dataInPorts A 1))
                    (proposition (dataInPorts B 1)), false)).
+
 (*applies twice because it have two repeated nodes. Must be fixed (only happens with "or" branching *)
+(*ERICK:Aqui ele já tá repedindo a aplicação da regra do box, não sei o porquê.
+Verificar o valor dos equiv_decb comparados dentro da função correspondente*)
 Eval compute in formulaCompApp1.
+
+Definition test2 := formula2Tableau (or (proposition (dataInPorts A 1))
+                   (proposition (dataInPorts B 1))).
+
+Eval compute in test2.
+
+Eval compute in applyRule (formula_eqDec portsEq nat_eqDec) (test2)
+(0,
+             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+             false)).
+
+
+(*example without box -> pra ver se a pemba tá no box ou em tudo
+Problema tá na recursao do node*)
+
+
+
+Definition testNoBox := formula2Tableau (imp
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))) 
+        (proposition (dataInPorts B 1))).
+
+Eval compute in testNoBox.
+
+Definition testNoBoxAppRule := applyRule (formula_eqDec portsEq nat_eqDec)  
+    ((testNoBox))
+(0,
+             (imp
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))
+                (proposition (dataInPorts B 1)), false)).
+
+Eval compute in testNoBoxAppRule.
+
+
+Definition testNoBoxAppRule2 := applyRule (formula_eqDec portsEq nat_eqDec)
+testNoBoxAppRule
+(0,
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+                true)).
+
+Eval compute in testNoBoxAppRule.
+
+Eval compute in testNoBoxAppRule2.
+
+(*what the fuck*)
+(*primeira condiçao do if*)
+Eval compute in equiv_decb (fst((0,
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+                true)))) (fst( (0,
+             (imp
+                (or
+                   (proposition
+                      (dataInPorts A 1))
+                   (proposition
+                      (dataInPorts B 1)))
+                (proposition
+                   (dataInPorts B 1)),
+             false)))).
+
+(*Segunda condiçao do if*)
+
+Check (formula_eqDec portsEq nat_eqDec).
+
+(* Eval compute in equalFormula  *)
+
+Eval compute in equalForumla (formula_eqDec portsEq nat_eqDec) (fst(snd((0,
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+                true)))))
+(fst(snd( (0,
+             (imp
+                (or
+                   (proposition
+                      (dataInPorts A 1))
+                   (proposition
+                      (dataInPorts B 1)))
+                (proposition
+                   (dataInPorts B 1)),
+             false))))).
+
+Eval compute in equiv_decb (fst(snd((0,
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
+                true)))))  (fst(snd( (0,
+             (imp
+                (or
+                   (proposition
+                      (dataInPorts A 1))
+                   (proposition
+                      (dataInPorts B 1)))
+                (proposition
+                   (dataInPorts B 1)),
+             false))))).
+
+
 
 
 
