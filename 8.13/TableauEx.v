@@ -3,6 +3,8 @@ Import ListNotations.
 
 Obligation Tactic := congruence.
 
+Context `{EqDec (nat -> nat) eq} (Hfil: `{EqDec (nat -> bool) eq}).
+
 Inductive ports := A | B | C | D | E | F | G.
 
 Program Instance portsEq : EqDec ports eq :=
@@ -200,7 +202,7 @@ Check formula_eqDec.
 
 Check dataProp_eqdec.
 
-Definition lossyFifoProgram := [flowLossySync A B;flowFifo B C].
+Definition lossyFifoProgram := [flowLossySync nat A B;flowFifo nat B C].
 
 (*Test1 - LossyFifo *)
 
@@ -228,18 +230,34 @@ Eval compute in formula1.
 Eval compute in formula2.
 
  Program Instance dataProp_eqdec : EqDec (dataProp ports nat) eq :=
-  {
-    equiv_dec x y :=
+   {
+    equiv_dec x y (* := fix rec x y *) :=
       match x, y with
         | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
         | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
         | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+ (*        | quiFormulaBox x phi, quiFormulaBox y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right
+        | quiFormulaDia  x phi, quiFormulaDia y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right *)
         | dataInPorts a x , dataInFifo b y c => in_right
         | dataInPorts a x , dataBothPorts _ b y => in_right
+(*         | dataInPorts a x , quiFormulaBox y phi' => in_right
+        | dataInPorts a x , quiFormulaDia y phi' => in_right *)
         | dataInFifo a x b , dataInPorts c y => in_right
         | dataInFifo a x b , dataBothPorts _ c y => in_right
+(*         | dataInFifo a x b , quiFormulaBox y phi' => in_right
+        | dataInFifo a x b , quiFormulaDia y phi' => in_right *)
         | dataBothPorts _ a b , dataInPorts c y => in_right
         | dataBothPorts _ a b , dataInFifo c y d  => in_right
+(*         | dataBothPorts _ a b , quiFormulaBox x phi  => in_right
+        | dataBothPorts _ a b , quiFormulaDia x phi  => in_right *)
+(*         | quiFormulaBox x phi , dataInPorts c y => in_right
+        | quiFormulaBox x phi , dataInFifo c y d  => in_right
+        | quiFormulaBox x phi , dataBothPorts _ a b => in_right
+        | quiFormulaBox x phi, quiFormulaDia y phi' => in_right
+        | quiFormulaDia x phi , dataInPorts c y => in_right
+        | quiFormulaDia x phi , dataInFifo c y d  => in_right
+        | quiFormulaDia x phi, dataBothPorts _ a b => in_right
+        | quiFormulaDia x phi , quiFormulaBox y phi' => in_right *)
       end
   }.
 
@@ -247,24 +265,24 @@ Eval compute in formula2.
   the specificnode content (i.e, the state, the formulae and its value in the state to apply the
   corresponding rule to the corresponding node *)  
 
-Definition formulaApp1 := applyRule (formula_eqDec portsEq nat_eqDec) (formula1)
+Definition formulaApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) (formula1)
     (0,
              (box [dataPorts A 0]
                 (sProgram
-                   (reoProg [flowLossySync A B; flowFifo B C] []))
+                   (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
                 (or (proposition (dataInPorts A 1))
-                   (proposition (dataInPorts B 1))), false)).
+                   (proposition (dataInPorts B 1))), false)) 1 0 0.
 
-Definition formulaApp2 := tableauRules (formula_eqDec portsEq nat_eqDec) (proofTree(formula2)).
+Definition formulaApp2 := tableauRules (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2)).
 
 Eval compute in formulaApp1.
 
-Definition formulaCompApp1 := applyRule (formula_eqDec portsEq nat_eqDec) 
+Definition formulaCompApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
             (formulaApp1) 
                (1,
                 (or (proposition (dataInPorts A 1))
-                   (proposition (dataInPorts B 1)), false)).
-
+                   (proposition (dataInPorts B 1)), false)) 1 0 0.
+ 
 (*applies twice because it have two repeated nodes. Must be fixed (only happens with "or" branching *)
 (*ERICK:Aqui ele já tá repedindo a aplicação da regra do box, não sei o porquê.
 Verificar o valor dos equiv_decb comparados dentro da função correspondente*)
@@ -275,10 +293,10 @@ Definition test2 := formula2Tableau (or (proposition (dataInPorts A 1))
 
 Eval compute in test2.
 
-Eval compute in applyRule (formula_eqDec portsEq nat_eqDec) (test2)
+Eval compute in applyRule (formula_eqDec Hfil portsEq nat_eqDec) (test2)
 (0,
              (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-             false)).
+             false)) 0 0 0.
 
 
 (*example without box -> pra ver se a pemba tá no box ou em tudo
@@ -292,27 +310,26 @@ Definition testNoBox := formula2Tableau (imp
 
 Eval compute in testNoBox.
 
-Definition testNoBoxAppRule := applyRule (formula_eqDec portsEq nat_eqDec)  
+Definition testNoBoxAppRule := applyRule (formula_eqDec Hfil portsEq nat_eqDec)  
     ((testNoBox))
 (0,
              (imp
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))
-                (proposition (dataInPorts B 1)), false)).
+                (proposition (dataInPorts B 1)), false)) 0 0 0.
 
 Eval compute in testNoBoxAppRule.
 
 
-Definition testNoBoxAppRule2 := applyRule (formula_eqDec portsEq nat_eqDec)
+Definition testNoBoxAppRule2 := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
 testNoBoxAppRule
 (0,
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-                true)).
+                true)) 0 0 0.
 
 Eval compute in testNoBoxAppRule.
 
 Eval compute in testNoBoxAppRule2.
 
-(*what the fuck*)
 (*primeira condiçao do if*)
 Eval compute in equiv_decb (fst((0,
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
@@ -327,42 +344,86 @@ Eval compute in equiv_decb (fst((0,
                    (dataInPorts B 1)),
              false)))).
 
-(*Segunda condiçao do if*)
+(*box tests*)
 
-Check (formula_eqDec portsEq nat_eqDec).
 
-(* Eval compute in equalFormula  *)
+Definition formula1Star := formula2Tableau
+  (diamond t' piStar 
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))).
 
-Eval compute in equalForumla (formula_eqDec portsEq nat_eqDec) (fst(snd((0,
-                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-                true)))))
-(fst(snd( (0,
+Eval compute in formula1Star.
+
+Eval compute in applyRule (formula_eqDec Hfil portsEq nat_eqDec)
+formula1Star
+(0,
+             (diamond [dataPorts A 0]
+                (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+             false)) 0 0 0.
+
+Definition formula2Star := formula2Tableau
+  (imp (diamond t' piStar 
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))))
+(diamond t' piStar 
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))))).
+
+Eval compute in formula2Star.
+
+Definition formula2StarAppRule := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
+formula2Star (0,
              (imp
-                (or
-                   (proposition
-                      (dataInPorts A 1))
-                   (proposition
-                      (dataInPorts B 1)))
-                (proposition
-                   (dataInPorts B 1)),
-             false))))).
+                (diamond [dataPorts A 0]
+                   (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                   (or (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1))))
+                (diamond [dataPorts A 0]
+                   (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                   (or (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1)))), false)) 0 0 0.
 
-Eval compute in equiv_decb (fst(snd((0,
-                (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-                true)))))  (fst(snd( (0,
-             (imp
-                (or
-                   (proposition
-                      (dataInPorts A 1))
-                   (proposition
-                      (dataInPorts B 1)))
-                (proposition
-                   (dataInPorts B 1)),
-             false))))).
+Eval compute in formula2StarAppRule.
 
+(* Definition formula2StarAppRule2 := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
+formula2StarAppRule (0,
+                (diamond [dataPorts A 0]
+                   (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                   (or (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1))), true)) 0 0 0.
 
+Eval compute in formula2StarAppRule2.
+ *)
+(*Tests to find closed tableau*)
 
+Eval compute in getAllLeafNodes (proofTree(formula2StarAppRule)).
 
+Eval compute in getBranch (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule)) ((0,
+          (diamond [dataPorts A 0]
+             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+          false))).
 
+Eval compute in checkContradictoryBranch (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule)) ((0,
+          (diamond [dataPorts A 0]
+             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+          false))).
 
+Eval compute in checkContradictoryBranch (formula_eqDec Hfil portsEq nat_eqDec)(node
+            (0,
+            (diamond [dataPorts A 0]
+               (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+               (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+            true))
+            (leaf
+               (0,
+               (diamond [dataPorts A 0]
+                  (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                  (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+               false))) (nilLeaf nat ports nat))
+
+(0,
+               (diamond [dataPorts A 0]
+                  (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                  (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
+               false)).
 

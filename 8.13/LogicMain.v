@@ -77,12 +77,16 @@ Program Instance set_eqdec {A} `(eqa : EqDec A eq) : EqDec (set A) eq :=
   Variable name state data: Type.
   Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
 
+  Context `{EqDec (data -> data) eq} (Hfil: `{EqDec (data -> bool) eq}).
+
   Inductive connector :=
   | sync : name -> name -> connector
   | lossySync : name -> name -> connector
   | fifo : name -> name -> connector
   | syncDrain : name -> name -> connector
   | asyncDrain : name -> name -> connector
+  | filterReo : (data -> bool) -> name -> name -> connector (*renamed to FilterReo otherwise Coq gets lost with filter for lists*)
+  | transform : (data -> data) -> name -> name -> connector
   | merger : name -> name -> name -> connector
   | replicator : name -> name -> name -> connector.
 
@@ -95,50 +99,64 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
       | fifo a b, fifo c d => if a == c then if b == d then in_left else in_right else in_right 
       | syncDrain a b, syncDrain c d => if a == c then if b == d then in_left else in_right else in_right 
       | asyncDrain a b, asyncDrain c d => if a == c then if b == d then in_left else in_right else in_right 
-      | merger a b c, merger d e f => if a == d then 
-                                        if b == e then 
-                                          if c == f then in_left 
-                                          else in_right 
-                                         else in_right 
-                                      else in_right
-      | replicator a b c, replicator d e f => if a == d then 
-                                                if b == e then 
-                                                  if c == f then in_left 
-                                                  else in_right 
-                                                else in_right 
-                                              else in_right
+      | merger a b c, merger d e f => if a == d then if b == e then if c == f 
+                                      then in_left else in_right else in_right else in_right
+      | replicator a b c, replicator d e f => if a == d then if b == e then if c == f
+                                              then in_left else in_right else in_right else in_right
+      | transform f a b, transform g c d =>  if f == g then if a == c then if b == d 
+                                             then in_left else in_right else in_right else in_right
+      | filterReo f a b, filterReo g c d =>  if f == g then if a == c then if b == d 
+                                             then in_left else in_right else in_right else in_right
       | sync a b, lossySync c d | sync a b, fifo c d | sync a b, syncDrain c d | sync a b, asyncDrain c d => in_right
-      | sync a b, merger c d e | sync a b, replicator c d e => in_right
+      | sync a b, merger c d e | sync a b, replicator c d e | sync a b, transform c d e 
+      | sync a b, filterReo c d e => in_right
 
       | lossySync a b, sync c d | lossySync a b, fifo c d | lossySync a b, syncDrain c d | lossySync a b, asyncDrain c d => in_right
-      | lossySync a b, merger c d e | lossySync a b, replicator c d e => in_right
+      | lossySync a b, merger c d e | lossySync a b, replicator c d e | lossySync a b, transform c d e 
+      | lossySync a b, filterReo c d e => in_right
 
       | fifo a b, sync c d | fifo a b, lossySync c d | fifo a b, syncDrain c d | fifo a b, asyncDrain c d => in_right
-      | fifo a b, merger c d e | fifo a b, replicator c d e => in_right
+      | fifo a b, merger c d e | fifo a b, replicator c d e | fifo a b, transform c d e
+      | fifo a b, filterReo c d e => in_right
 
       | syncDrain a b, sync c d | syncDrain a b, lossySync c d | syncDrain a b, fifo c d | syncDrain a b, asyncDrain c d => in_right
-      | syncDrain a b, merger c d e | syncDrain a b, replicator c d e  => in_right
+      | syncDrain a b, merger c d e | syncDrain a b, replicator c d e 
+      | syncDrain a b, transform c d e | syncDrain a b, filterReo c d e  => in_right
 
       | asyncDrain a b, sync c d | asyncDrain a b, lossySync c d | asyncDrain a b, fifo c d | asyncDrain a b, syncDrain c d => in_right
-      | asyncDrain a b, merger c d e | asyncDrain a b, replicator c d e => in_right
+      | asyncDrain a b, merger c d e | asyncDrain a b, replicator c d e
+      | asyncDrain a b, transform c d e | asyncDrain a b, filterReo c d e => in_right
 
       | merger a b c, sync d e | merger a b c, lossySync d e | merger a b c, fifo d e | merger a b c, syncDrain d e => in_right
       | merger a b c, asyncDrain d e  => in_right
       | merger a b c, replicator d e f => in_right
+      | merger a b c, transform f d e | merger a b c, filterReo f d e  => in_right
 
       | replicator a b c, sync d e | replicator a b c, lossySync d e | replicator a b c, fifo d e | replicator a b c, syncDrain d e => in_right
       | replicator a b c, asyncDrain d e => in_right 
-
       | replicator a b c, merger d e f   => in_right
+      | replicator a b c, transform f d e | replicator a b c, filterReo f d e => in_right
+
+      | filterReo a b c, sync d e | filterReo a b c, lossySync d e | filterReo a b c, fifo d e | filterReo a b c, syncDrain d e => in_right
+      | filterReo a b c, asyncDrain d e  => in_right
+      | filterReo a b c, merger d e f => in_right
+      | filterReo a b c, replicator d e f | filterReo a b c, transform d e f => in_right
+
+      | transform a b c, sync d e | transform a b c, lossySync d e | transform a b c, fifo d e | transform a b c, syncDrain d e => in_right
+      | transform a b c, asyncDrain d e  => in_right
+      | transform a b c, merger d e f => in_right
+      | transform a b c, replicator d e f | transform a b c, filterReo d e f => in_right
       end
     }.
 
   (* We define a type which denotes the ports to fire and their respective data *)
   Inductive goMarks :=
     | goTo : name -> name -> goMarks
-    | goFifo : name -> data -> name -> goMarks  (*entra no fifo: axb*)
-    | goFromFifo : name -> data -> name -> goMarks. (*sai do fifo : axb->b --- preciso guardar essas referências?*) 
-
+    | goFifo : name -> data -> name -> goMarks  (*enters fifo: axb*)
+    | goFromFifo : name -> data -> name -> goMarks (*leaves fifo : axb->b --- preciso guardar essas referências?*)
+    | goTransform : (data -> data) -> name -> name -> goMarks
+    | goFilter : (data -> bool) -> name -> name -> goMarks.
+ 
   (* We define an inductive type for the data that effectively denote the flow of a 
    circuit: either there are data items on some port names or a data item within a
    buffer *)
@@ -146,14 +164,18 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | fifoData : name -> data -> name -> dataConnector
     | dataPorts : name -> data -> dataConnector.
 
+  (*Denotes propositional symbols' value in this ReLo implementation*)
   Inductive dataProp name data :=
     | dataInFifo : name -> data -> name -> dataProp name data
     | dataInPorts : name -> data -> dataProp name data
     | dataBothPorts : name -> name -> dataProp name data.
+  (*Qui formuale needs to keep track also of the formulae they are rewriting*)
+(*     | quiFormulaBox : nat -> (dataProp name data) -> dataProp name data
+    | quiFormulaDia : nat -> (dataProp name data) -> dataProp name data. *)
 
  Program Instance dataProp_eqdec `(eqa: EqDec name eq) `(eqb: EqDec data eq) : EqDec (dataProp name data) eq :=
   {
-    equiv_dec x y :=
+    equiv_dec x y (* := fix rec x y *) :=
       match x, y with
         | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
         | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
@@ -196,7 +218,9 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | flowLossySync : name -> name -> flowProgram
     | flowFifo : name -> name -> flowProgram
     | flowMerger : name -> name -> name -> flowProgram
-    | flowReplicator : name -> name -> name -> flowProgram.
+    | flowReplicator : name -> name -> name -> flowProgram
+    | flowTransform : (data -> data) -> name -> name -> flowProgram
+    | flowFilter : (data -> bool) -> name -> name -> flowProgram.
 
   Program Instance flowProgram_eqdec `{EqDec name eq} : EqDec flowProgram eq :=
   { equiv_dec x y :=
@@ -208,24 +232,47 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                             then in_left else in_right else in_right else in_right
     | flowReplicator a b c, flowReplicator d e f => if a == d then if b == e then if c == f
                                             then in_left else in_right else in_right else in_right
+    | flowTransform f a b, flowTransform g c d => if f == g then if a == c then if b == d
+                                                  then in_left else in_right else in_right else in_right
+    | flowFilter f a b, flowFilter g c d => if f == g then if a == c then if b == d
+                                                  then in_left else in_right else in_right else in_right 
+ 
     | flowSync a b, flowLossySync c d | flowSync a b, flowFifo c d => in_right
-    | flowSync a b, flowMerger c d e | flowSync a b, flowReplicator c d e => in_right
+    | flowSync a b, flowMerger c d e | flowSync a b, flowReplicator c d e 
+    | flowSync a b, flowTransform c d e | flowSync a b, flowFilter c d e => in_right
 
     | flowLossySync a b, flowSync c d | flowLossySync a b, flowFifo c d => in_right
-    | flowLossySync a b, flowMerger c d e | flowLossySync a b, flowReplicator c d e => in_right
+    | flowLossySync a b, flowMerger c d e | flowLossySync a b, flowReplicator c d e 
+    | flowLossySync a b, flowTransform c d e | flowLossySync a b, flowFilter c d e => in_right
 
     | flowFifo a b, flowSync c d | flowFifo a b, flowLossySync c d => in_right
-    | flowFifo a b, flowMerger c d e | flowFifo a b, flowReplicator c d e => in_right
+    | flowFifo a b, flowMerger c d e | flowFifo a b, flowReplicator c d e
+    | flowFifo a b, flowTransform c d e | flowFifo a b, flowFilter c d e => in_right
+
 
     | flowReplicator a b c, flowSync d e => in_right
     | flowReplicator a b c, flowLossySync d e => in_right
     | flowReplicator a b c, flowFifo d e => in_right
     | flowReplicator a b c, flowMerger d e f => in_right
+    | flowReplicator a b c, flowTransform d e f | flowReplicator a b c, flowFilter d e f  => in_right
 
     | flowMerger a b c, flowSync d e => in_right
     | flowMerger a b c, flowLossySync d e => in_right
     | flowMerger a b c, flowFifo d e => in_right
     | flowMerger a b c, flowReplicator d e f => in_right
+    | flowMerger a b c, flowTransform d e f | flowMerger a b c, flowFilter d e f => in_right
+
+    | flowTransform a b c, flowSync d e => in_right
+    | flowTransform a b c, flowLossySync d e => in_right
+    | flowTransform a b c, flowFifo d e => in_right
+    | flowTransform a b c, flowMerger d e f => in_right
+    | flowTransform a b c, flowReplicator d e f | flowTransform a b c, flowFilter d e f  => in_right
+
+    | flowFilter a b c, flowSync d e => in_right
+    | flowFilter a b c, flowLossySync d e => in_right
+    | flowFilter a b c, flowFifo d e => in_right
+    | flowFilter a b c, flowMerger d e f => in_right
+    | flowFilter a b c, flowReplicator d e f | flowFilter a b c, flowTransform d e f => in_right
     end}.
 
 
@@ -259,6 +306,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | flowFifo a b => fifo a b
     | flowMerger a b c => merger a b c
     | flowReplicator a b c => replicator a b c
+    | flowTransform f a b => transform f a b
+    | flowFilter f a b => filterReo f a b
     end.
 
   Definition singleBlock2Reo (blockProg : blockProgram) :=
@@ -276,8 +325,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   (* Now we transform the separation of \pi = (f,b) into \pi' for simplicity's sake *)
   Definition program2SimpProgram (prog : reoProgram) : set connector :=
     match prog with
-    | reoProg setFlow setBlock => 
-      set_union equiv_dec (block2Reo setBlock) (flow2Reo setFlow)
+    | reoProg setFlow setBlock => (block2Reo setBlock)++(flow2Reo setFlow)
+     (*  set_union equiv_dec (block2Reo setBlock) (flow2Reo setFlow) *)
     end.
 
   (* Parsing of a Reo program \pi *)
@@ -289,6 +338,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | to : name -> name -> program (* sync, replicator, merger *)
     | asyncTo : name -> name -> program (* LossySync *)
     | fifoAlt : name -> name -> program (* fifo *)
+    | transformTo : (data -> data) -> name -> name -> program
+    | filterTo : (data -> bool) -> name -> name -> program
     | SBlock : name -> name -> program (* syncDrain *)
     | ABlock : name -> name -> program.  (* asyncDrain *)
 
@@ -301,16 +352,33 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
           if b == d then in_left 
           else in_right
         else in_right
+      | transformTo f a b, transformTo g c d => if a == c then if b == d then if f == g 
+                                                then in_left else in_right else in_right else in_right
+      | filterTo f a b, filterTo g c d => if a == c then if b == d then if f == g 
+                                                then in_left else in_right else in_right else in_right
       | to a b, asyncTo c d  | to a b, fifoAlt c d 
-      | to a b, SBlock c d   | to a b, ABlock c d  
+      | to a b, SBlock c d   | to a b, ABlock c d  => in_right
+      | to a b, transformTo g c d | to a b, filterTo g c d  => in_right
       | asyncTo a b, to c d  | asyncTo a b, fifoAlt c d 
-      | asyncTo a b, SBlock c d   | asyncTo a b, ABlock c d 
+      | asyncTo a b, SBlock c d   | asyncTo a b, ABlock c d => in_right
+      | asyncTo a b, transformTo g c d | asyncTo a b, filterTo g c d  => in_right
       | fifoAlt a b, asyncTo c d  | fifoAlt a b, to c d 
-      | fifoAlt a b, SBlock c d   | fifoAlt a b, ABlock c d 
+      | fifoAlt a b, SBlock c d   | fifoAlt a b, ABlock c d => in_right
+      | fifoAlt a b, transformTo g c d | fifoAlt a b, filterTo g c d  => in_right 
       | SBlock a b, asyncTo c d  | SBlock a b, to c d 
-      | SBlock a b, fifoAlt c d   | SBlock a b, ABlock c d 
+      | SBlock a b, fifoAlt c d   | SBlock a b, ABlock c d => in_right
+      | SBlock a b, transformTo g c d | SBlock a b, filterTo g c d => in_right
       | ABlock a b, asyncTo c d  | ABlock a b, to c d 
       | ABlock a b, fifoAlt c d   | ABlock a b, SBlock c d => in_right
+      | ABlock a b, transformTo g c d | ABlock a b, filterTo g c d  => in_right
+      | transformTo f a b, asyncTo c d  | transformTo f a b, fifoAlt c d 
+      | transformTo f a b, SBlock c d   | transformTo f a b, ABlock c d => in_right
+      | transformTo f a b, to c d => in_right
+      | transformTo f a b, filterTo g c d => in_right
+      | filterTo f a b, asyncTo c d  | filterTo f a b, fifoAlt c d 
+      | filterTo f a b, SBlock c d   | filterTo f a b, ABlock c d => in_right
+      | filterTo f a b, to c d => in_right
+      | filterTo f a b, transformTo g c d => in_right
     end
     }.
 
@@ -325,6 +393,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
               | fifo a b => (parse t s) ++ [fifoAlt a b]
               | syncDrain a b => (parse(t) ([(SBlock a b)] ++ s))
               | asyncDrain a b => (parse(t) [(ABlock a b)] ++ s)
+              | filterReo f a b => (parse(t) ([filterTo f a b] ++ s )) 
+              | transform f a b => (parse(t) ([transformTo f a b] ++ s ))
               | merger a b c => (parse(t) (s ++ [(to a c); (to b c)])) (* s ++ [(mer a b c)] *)
               | replicator a b c => (parse(t) (s ++ [(to a b); (to a c)])) (*s ++ [(rep a b c)]*)
               end
@@ -335,23 +405,18 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Proof.
   (*intros.
   split.*)
-  intros. induction pi. destruct s. simpl in H2. inversion H2. inversion H2. 
-  simpl. simpl in H2. destruct H2.
-  - rewrite H2. Admitted.
+  intros. induction pi. destruct s. simpl in H2. inversion H3. inversion H3. 
+  simpl. simpl in H2. destruct H3.
+  - rewrite H3. Admitted.
 
   Program Instance dataConnector_eqdec `{EqDec name eq} `{EqDec data eq} : EqDec (dataConnector) eq :=
   {
   equiv_dec x y :=
     match x, y with
-      | dataPorts a b, dataPorts c d => if a == c then 
-                                          if b == d then in_left 
-                                          else in_right
-                                        else in_right
-      | fifoData a b c, fifoData d e f => if a == d then 
-                                            if b == e then 
-                                              if c == f then in_left 
-                                              else in_right
-                                            else in_right
+      | dataPorts a b, dataPorts c d => if a == c then if b == d then in_left 
+                                        else in_right else in_right
+      | fifoData a b c, fifoData d e f => if a == d then if b == e then if c == f 
+                                          then in_left else in_right else in_right
                                       else in_right
       | dataPorts a b, fifoData c d e=> in_right
       | fifoData c d e, dataPorts a b => in_right
@@ -368,14 +433,14 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                    dInSetDataConnector s data = true <-> (exists d, In d s /\ d = data).
   Proof.
   intros. split.
-  - intros. induction s. simpl in H2. inversion H2.
-    simpl in H2. destruct equiv_dec in H2. inversion e. exists a. split.
+  - intros. induction s. simpl in H2. inversion H3.
+    simpl in H3. destruct equiv_dec in H3. inversion e. exists a. split.
     simpl. auto. reflexivity.
-    apply IHs in H2. destruct H2. destruct H2. exists x.
-    split. simpl;auto. exact H3.
-  - intros. destruct H2. destruct H2. induction s. inversion H2.
-    simpl in H2. destruct H2. rewrite <- H2 in H3. rewrite H3. simpl. destruct equiv_dec. reflexivity.
-    congruence. apply IHs in H2. simpl. destruct equiv_dec. reflexivity. exact H2.
+    apply IHs in H3. destruct H3. destruct H3. exists x.
+    split. simpl;auto. exact H4.
+  - intros. destruct H3. destruct H3. induction s. inversion H3.
+    simpl in H3. destruct H3. rewrite <- H3 in H4. rewrite H4. simpl. destruct equiv_dec. reflexivity.
+    congruence. apply IHs in H3. simpl. destruct equiv_dec. reflexivity. exact H3.
   Defined.
  
   Fixpoint subset (s: set dataConnector) (s2 : (set dataConnector)) :=
@@ -389,20 +454,20 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Proof.
   intros. split.
   - intros. induction s. right. reflexivity.
-  simpl in H2. simpl. left. rewrite andb_lazy_alt in H2. 
-  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2. apply IHs in H2.
-  destruct H2. split. reflexivity. auto. split. reflexivity. rewrite H2. simpl. reflexivity.
-  intros. rewrite H3 in H2. inversion H2.
-  - intros. induction s. reflexivity. destruct H2. simpl. simpl in H2. rewrite andb_lazy_alt in H2.
-  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H3 in H2.
-  destruct H2. destruct IHs. left. reflexivity. auto. intros. rewrite H3 in H2. inversion H2. inversion H2.
+  simpl in H3. simpl. left. rewrite andb_lazy_alt in H3. 
+  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H4 in H3. apply IHs in H3.
+  destruct H3. split. reflexivity. auto. split. reflexivity. rewrite H3. simpl. reflexivity.
+  intros. rewrite H4 in H3. inversion H3.
+  - intros. induction s. reflexivity. destruct H3. simpl. simpl in H3. rewrite andb_lazy_alt in H3.
+  apply andb_true_intro. case_eq (dInSetDataConnector s2 a). intros. rewrite H4 in H3.
+  destruct H3. destruct IHs. left. reflexivity. auto. intros. rewrite H4 in H3. inversion H3. inversion H3.
   Defined.
 
-  Fixpoint subSubset (s: set (set dataConnector)) (s2 : (set (set dataConnector))) := 
+(*   Fixpoint subSubset (s: set (set dataConnector)) (s2 : (set (set dataConnector))) := 
     match s,s2 with
     | a::t,b::y => subset a b && subSubset t y
     | _,_ => true
-    end.
+    end. -> part of the bounded iteration feature *)
 
 
   (* Auxiliary function for goTo a b and dataPorts a x -> dataPorts b x *)
@@ -412,6 +477,27 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   | ax::acc => match ax,dataSink with
                | dataPorts a x, goTo y b => if equiv_decb a y then (Some (dataPorts b x)) else port2port dataSink acc
                | _, _ => port2port dataSink acc
+                end
+  end.
+  
+  Fixpoint port2portTr (transformFunction : data -> data) (dataSink : goMarks) (dataSource : set dataConnector) :=
+  match dataSource with 
+  | [] => None
+  | ax::acc => match ax,dataSink with
+               | dataPorts a x, goTransform f y b => if equiv_decb a y then (Some (dataPorts b (transformFunction(x)))) 
+                                            else port2portTr transformFunction dataSink acc
+               | _, _ => port2portTr transformFunction dataSink acc
+                end
+  end.
+
+  Fixpoint port2portFil (filterFunction : data -> bool) (dataSink : goMarks) (dataSource : set dataConnector) :=
+  match dataSource with 
+  | [] => None
+  | ax::acc => match ax,dataSink with
+               | dataPorts a x, goFilter f y b => if equiv_decb a y && (filterFunction(x)) 
+                                                  then (Some (dataPorts b (x))) 
+                                                  else port2portFil filterFunction dataSink acc 
+               | _, _ => port2portFil filterFunction dataSink acc
                 end
   end.
 
@@ -427,7 +513,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                         | _ => false
                                         end) (t)) then 
               (*busco o item de dado em t e transformo pro formato adequado*)
-                                            match (port2port (goTo a b)(filter(fun x : (dataConnector) => match x with
+                                            match (port2port (goTo a b)(filter(fun y : (dataConnector) => match y with
                                             | dataPorts name1 data => (equiv_decb name1 a)
                                             | _ => false 
                                             end) (t))) with
@@ -436,6 +522,31 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                             end
                                         else fire t l acc
 
+              | goTransform f a b => if (existsb (fun x : (dataConnector) => match x with
+                                        | dataPorts name1 data => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)) then 
+              (*busco o item de dado em t e transformo pro formato adequado*)
+                                            match (port2portTr f (goTransform f a b)(filter(fun x : (dataConnector) => match x with
+                                            | dataPorts name1 data => (equiv_decb name1 a)
+                                            | _ => false 
+                                            end) (t))) with
+                                            | None => (fire t l acc) 
+                                            | Some x => (fire t l ((x::acc))) 
+                                            end
+                                        else fire t l acc
+              | goFilter f a b => if (existsb (fun x : (dataConnector) => match x with
+                                        | dataPorts name1 data => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)) then 
+                                            match (port2portFil f (goTo a b)(filter(fun x : (dataConnector) => match x with
+                                            | dataPorts name1 data => (equiv_decb name1 a)
+                                            | _ => false 
+                                            end) (t))) with
+                                            | None => (fire t l acc) 
+                                            | Some x => (fire t l ((x::acc))) 
+                                            end
+                                        else fire t l acc
               | goFifo a x b => if (existsb (fun x : (dataConnector) => match x with
                                         | dataPorts name1 data => (equiv_decb name1 a)
                                         | _ => false
@@ -460,22 +571,58 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                                  else (goTo a b)::(swap t current)
                                    | goFromFifo u w v => if (equiv_decb b v) then (goFromFifo u w v)::(swap t current) 
                                                  else (goTo a b)::(swap t current)
+                                   | goTransform f u v => if (equiv_decb b v) then (goTransform f a b)::(swap t current) 
+                                                 else (goTo a b)::(swap t current)
+                                   | goFilter f u v => if (equiv_decb b v) then (goFilter f a b)::(swap t current) 
+                                                 else (goTo a b)::(swap t current)
                                     end
-                     | goFifo a x b => match current with
+                     | goTransform f a b => match current with
+                                   | goTo u v => if (equiv_decb b v) then (goTo u v)::(swap t current) 
+                                                 else (goTransform f a b)::(swap t current)
+                                   | goFifo u w v => if (equiv_decb b v) then (goFifo u w v)::(swap t current) 
+                                                 else (goTransform f a b)::(swap t current)
+                                   | goFromFifo u w v => if (equiv_decb b v) then (goFromFifo u w v)::(swap t current) 
+                                                 else (goTransform f a b)::(swap t current)
+                                   | goTransform f u v => if (equiv_decb b v) then (goTransform f a b)::(swap t current) 
+                                                 else (goTransform f a b)::(swap t current)
+                                   | goFilter f' u v => if (equiv_decb b v) then (goFilter f' a b)::(swap t current) 
+                                                 else (goTransform f a b)::(swap t current)
+                                    end
+                     | goFilter f a b => match current with
+                                   | goTo u v => if (equiv_decb b v) then (goTo u v)::(swap t current) 
+                                                 else (goFilter f a b)::(swap t current)
+                                   | goFifo u w v => if (equiv_decb b v) then (goFifo u w v)::(swap t current) 
+                                                 else (goFilter f a b)::(swap t current)
+                                   | goFromFifo u w v => if (equiv_decb b v) then (goFromFifo u w v)::(swap t current) 
+                                                 else (goFilter f a b)::(swap t current)
+                                   | goTransform f' u v => if (equiv_decb b v) then (goTransform f' a b)::(swap t current) 
+                                                 else (goFilter f a b)::(swap t current)
+                                   | goFilter f u v => if (equiv_decb b v) then (goFilter f a b)::(swap t current) 
+                                                 else (goFilter f a b)::(swap t current)
+                                    end
+                     | goFifo a data b => match current with
                                        | goTo x y => if (equiv_decb b y) then (goTo x y)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFifo a data b)::(swap t current)
                                        | goFifo x y z => if (equiv_decb b z) then (goFifo x y z)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFifo a data b)::(swap t current)
                                        | goFromFifo x y z => if (equiv_decb b z) then (goFromFifo x y z)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFifo a data b)::(swap t current)
+                                       | goTransform f y z => if (equiv_decb b z) then (goTransform f y z)::(swap t current) 
+                                                 else (goFifo a data b)::(swap t current)
+                                       | goFilter f u v => if (equiv_decb b v) then (goFilter f a b)::(swap t current) 
+                                                 else (goFifo a data b)::(swap t current)
                                         end
-                     | goFromFifo a x b => match current with
+                     | goFromFifo a data b => match current with
                                        | goTo x y => if (equiv_decb b y) then (goTo x y)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFromFifo a data b)::(swap t current)
                                        | goFifo x y z => if (equiv_decb b z) then (goFifo x y z)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFromFifo a data b)::(swap t current)
                                        | goFromFifo x y z => if (equiv_decb b z) then (goFromFifo x y z)::(swap t current) 
-                                                 else (goTo a b)::(swap t current)
+                                                 else (goFromFifo a data b)::(swap t current)
+                                       | goTransform f y z => if (equiv_decb b z) then (goTransform f y z)::(swap t current) 
+                                                 else (goFromFifo a data b)::(swap t current)
+                                       | goFilter f u v => if (equiv_decb b v) then (goFilter f a b)::(swap t current) 
+                                                 else (goFromFifo a data b)::(swap t current)
                                         end
                      end
     end.
@@ -494,9 +641,9 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Lemma dataConnecetorToGoMarksFifo : forall t : set dataConnector, forall a, forall b, forall x, 
     dataConnectorToGoMarksFifo t = [goFromFifo a x b] -> In (fifoData a x b) t.
   Proof.
-  intros. induction t. simpl in H2. inversion H2. simpl in H2. case_eq (a0). intros. rewrite H3 in H2.
-  inversion H2. simpl. auto. intros. rewrite H3 in H2.
-  inversion H2. simpl. auto. 
+  intros. induction t. simpl in H3. inversion H3. simpl in H3. case_eq (a0). intros. rewrite H4 in H3.
+  inversion H3. simpl. auto. intros. rewrite H4 in H3.
+  inversion H3. simpl. auto. 
   Defined.
 
   (* Auxiliary definition to retrieve data from the input t to references of single data *)
@@ -524,6 +671,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                         | fifoAlt name1 name2 => (nequiv_decb name1 a)
                                         | SBlock name1 name2 => (nequiv_decb name1 a)
                                         | ABlock name1 name2 => (nequiv_decb name1 a)
+                                        | transformTo f name1 name2 => (nequiv_decb name1 a)
+                                        | filterTo f name1 name2 => (nequiv_decb name1 a)
                                         end) (s')).
 
   (*Retrieves port names that are on the sink node of a ReLo Program *)
@@ -564,7 +713,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
      Ou seja, acc fica livre de repetição por construção.*)
     match k with
     | 0 => fire t acc []
-    | Datatypes.S n => match s with
+    | Datatypes.S n  =>  match s with
              | [] => fire t acc []
              | prog::s' => match prog with
                         | to a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
@@ -575,6 +724,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                             | goTo name1 name2 => (equiv_decb name2 b) 
                                             | goFifo name1 data name2 => (equiv_decb name2 b)
                                             | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goTransform f name1 name2 => (equiv_decb name2 b)
+                                            | goFilter f name1 name2 => (equiv_decb name2 b)
                                             end) (acc)))
                                          then  (*caso 1*)
                                             (go s' n (acc++[goTo a b]) t)
@@ -585,16 +736,52 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                          | asyncTo a b => if (existsb (fun x : (dataConnector) => match x with (*a lossySync b *)
                                         | dataPorts name1 name2 => (equiv_decb name1 a)
                                         | _ => false
-                                        end) (t)) then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                        end) (t)) then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc. Para o LossySync, também avaliar se tem alguém com o destino sendo o source node, uma vez que fica A para A*)
                                           if negb((existsb (fun x : goMarks => match x with
-                                            | goTo name1 name2 => (equiv_decb name2 b) 
-                                            | goFifo name1 data name2 => (equiv_decb name2 b)
-                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goTo name1 name2 => (equiv_decb name2 b) || (equiv_decb name2 a) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b) || (equiv_decb name2 a) 
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b) || (equiv_decb name2 a) 
+                                            | goTransform f name1 name2 => (equiv_decb name2 b) || (equiv_decb name2 a) 
+                                            | goFilter f name1 name2 => (equiv_decb name2 b) || (equiv_decb name2 a) 
                                             end) (acc))) 
                                           then (*caso 1*)
                                             (go s' n (acc++[goTo a b]) t) ++ (go s' n (acc++[goTo a a])  t)
                                          else (*caso 2 - existe alguem em acc que possui o mesmo sink*)
                                             (go s' n ((swap acc (goTo a b))++[goTo a b]) t) ++ (go s' n (acc) t)
+                                      else 
+                                      (go s' n acc t)
+                        | transformTo f a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
+                                        | dataPorts name1 data => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                          if negb((existsb (fun x : goMarks => match x with
+                                            | goTo name1 name2 => (equiv_decb name2 b) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goTransform f name1 name2 => (equiv_decb name2 b)
+                                            | goFilter f name1 name2 => (equiv_decb name2 b)
+                                            end) (acc)))
+                                         then  (*caso 1*)
+                                            (go s' n (acc++[goTransform f a b]) t)
+                                         else  (*caso 2 - existe alguem em acc que possui o mesmo sink*)
+                                             (go s' n (swap acc (goTransform f a b)) t) ++ (go s' n (acc) t)
+                                      else 
+                                      (go s' n acc t)
+                        | filterTo f a b => if existsb (fun x : (dataConnector) => match x with (*a sync b *)
+                                        | dataPorts name1 data => (equiv_decb name1 a)
+                                        | _ => false
+                                        end) (t)then (*condição seguinte verifica se ja tem alguem com o mesmo sink no acc *)
+                                          if negb((existsb (fun x : goMarks => match x with
+                                            | goTo name1 name2 => (equiv_decb name2 b) 
+                                            | goFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goTransform f name1 name2 => (equiv_decb name2 b)
+                                            | goFilter f name1 name2 => (equiv_decb name2 b)
+                                            end) (acc)))
+                                         then  (*caso 1*)
+                                            (go s' n (acc++[goFilter f a b]) t)
+                                         else  (*caso 2 - existe alguem em acc que possui o mesmo sink*)
+                                             (go s' n (swap acc (goFilter f a b)) t) ++ (go s' n (acc) t)
                                       else 
                                       (go s' n acc t)
                         | fifoAlt a b => if (existsb (fun x : (dataConnector) => match x with (*a fifo b *)
@@ -605,6 +792,8 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                             | goTo name1 name2 => (equiv_decb name2 b) 
                                             | goFifo name1 data name2 => (equiv_decb name2 b)
                                             | goFromFifo name1 data name2 => (equiv_decb name2 b)
+                                            | goTransform f name1 name2 => (equiv_decb name2 b)
+                                            | goFilter f name1 name2 => (equiv_decb name2 b)
                                             end) (acc))) 
                                           then (*caso 3 - existe alguem com o mesmo sink*)
                                             (go s' n (acc++dataConnectorToGoMarksFifo(t)) t) ++ (go s' n (acc) t)
@@ -670,7 +859,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                             else
                                               (go (halt [a;b] s') n acc t)
                          end
-            end
+            end 
     end.
   
   (* We define f as the top-level function to be used as follows *)
@@ -729,7 +918,9 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   | or : formula -> formula -> formula
   | neg : formula -> formula
   | imp : formula -> formula -> formula
-  | biImpl : formula -> formula -> formula.
+  | biImpl : formula -> formula -> formula
+  | quiFormulaBox : nat -> formula -> formula
+  | quiFormulaDia : nat -> formula -> formula.
   (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
 
   Program Instance formula_eqDec `(eqa: EqDec name eq) `(eqb : EqDec data eq)  : EqDec (formula) eq :=
@@ -749,22 +940,30 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
        | biImpl a b, biImpl c d => if rec a c then if rec b d
                                 then in_left else in_right else in_right
        | neg a, neg b => if rec a b then in_left else in_right
-  
+       
+       | quiFormulaBox x phi, quiFormulaBox y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right
+
+       | quiFormulaDia x phi, quiFormulaDia y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right
+
        | proposition a , box b c d | proposition a , diamond b c d => in_right
        | proposition a , and b c | proposition a , or b c | proposition a , imp b c 
        | proposition a , biImpl b c => in_right
        | proposition a , neg b => in_right
+       | proposition a , quiFormulaBox x phi | proposition a , quiFormulaDia x phi => in_right
+
 
        | box a b c, proposition d => in_right 
        | box a b c , diamond d e f => in_right
        | box a b c, and d e | box a b c , or d e | box a b c , imp d e 
        | box a b c , biImpl d e => in_right
        | box a b c, neg d => in_right
+       | box a b c , quiFormulaBox x phi | box a b c, quiFormulaDia x phi => in_right
        | diamond a b c, proposition d => in_right 
        | diamond a b c , box d e f => in_right
        | diamond a b c, and d e | diamond a b c , or d e | diamond a b c , imp d e 
        | diamond a b c , biImpl d e => in_right
        | diamond a b c, neg d => in_right
+       | diamond a b c , quiFormulaBox x phi | diamond a b c , quiFormulaDia x phi => in_right
 
        | or a b, proposition d => in_right 
        | or a b , box d e f => in_right
@@ -772,24 +971,28 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
        | or a b , biImpl c d => in_right
        | or a b , diamond c d e => in_right
        | or a b, neg c => in_right
+       | or a b , quiFormulaBox x phi | or a b , quiFormulaDia x phi => in_right
        | and a b, proposition d => in_right 
        | and a b , box d e f => in_right
        | and a b, or c d | and a b , imp c d
        | and a b , biImpl c d => in_right
        | and a b , diamond c d e => in_right
        | and a b, neg c => in_right
+       | and a b , quiFormulaBox x phi | and a b , quiFormulaDia x phi => in_right
        | imp a b, proposition d => in_right 
        | imp a b , box d e f => in_right
        | imp a b, and c d | imp a b , or c d
        | imp a b , biImpl c d => in_right
        | imp a b , diamond c d e => in_right
        | imp a b, neg c => in_right
+       | imp a b , quiFormulaBox x phi | imp a b , quiFormulaDia x phi => in_right
        | biImpl a b, proposition d => in_right 
        | biImpl a b , box d e f => in_right
        | biImpl a b, and c d | biImpl a b , or c d
        | biImpl a b , imp c d => in_right
        | biImpl a b , diamond c d e => in_right
        | biImpl a b, neg c => in_right
+       | biImpl a b , quiFormulaBox x phi | biImpl a b , quiFormulaDia x phi => in_right
 
        | neg a, proposition b => in_right 
        | neg a , box d e f => in_right
@@ -797,6 +1000,24 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
        | neg a , biImpl c d => in_right
        | neg a , diamond c d e => in_right
        | neg a, or c d => in_right
+       | neg a , quiFormulaBox x phi | neg a, quiFormulaDia x phi => in_right
+
+       | quiFormulaBox x phi, proposition b => in_right 
+       | quiFormulaBox x phi , box d e f => in_right
+       | quiFormulaBox x phi , and c d | quiFormulaBox x phi, imp c d
+       | quiFormulaBox x phi , biImpl c d => in_right
+       | quiFormulaBox x phi , diamond c d e => in_right
+       | quiFormulaBox x phi, or c d => in_right
+       | quiFormulaBox x phi , neg a => in_right | quiFormulaBox x phi, quiFormulaDia y phi' => in_right
+
+       | quiFormulaDia x phi, proposition b => in_right 
+       | quiFormulaDia x phi , box d e f => in_right
+       | quiFormulaDia x phi , and c d | quiFormulaDia x phi, imp c d
+       | quiFormulaDia x phi , biImpl c d => in_right
+       | quiFormulaDia x phi , diamond c d e => in_right
+       | quiFormulaDia x phi, or c d => in_right
+       | quiFormulaDia x phi , neg a => in_right | quiFormulaDia x phi, quiFormulaBox y phi' => in_right
+
       end
     }.
 
@@ -833,12 +1054,12 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
         In (x) (portsData) /\ x = dataPorts name data /\ (equiv_decb data portData) = true.
   Proof.
   intros.
-  induction portsData. intros. inversion H2.
-  intros. simpl in H2. case_eq a. intros. rewrite H3 in H2. 
-  apply IHportsData in H2. destruct H2. destruct H2. destruct H2.
-  destruct H2. destruct H4. exists x. exists x0. exists x1.
-  simpl. split. right. exact H2. split. exact H4. assumption.
-  intros. rewrite H3 in H2. exists a. exists n. exists d.
+  induction portsData. intros. inversion H3.
+  intros. simpl in H2. case_eq a. intros. rewrite H4 in H3. 
+  apply IHportsData in H3. destruct H3. destruct H3. destruct H3.
+  destruct H3. destruct H5. exists x. exists x0. exists x1.
+  simpl. split. right. exact H3. split. exact H5. assumption.
+  intros. rewrite H4 in H3. exists a. exists n. exists d.
   split. simpl. left. auto. auto.
   Defined.
 
@@ -931,6 +1152,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
 
   Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
     match formula with
+    | quiFormulaDia x phi | quiFormulaBox x phi => false
     | proposition p => (V(m) s p)
     | neg p => negb (singleModelStep m p s) 
     | and a b => (singleModelStep m a s) && (singleModelStep m b s)
@@ -940,6 +1162,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
                     (negb (singleModelStep m b s) || (singleModelStep m a s)) 
     | box t pi p' => match pi with
                   | sProgram reo => match p' with
+                                   | quiFormulaDia x phi | quiFormulaBox x phi => false
                                    | proposition p'' => 
                                        boxSatisfactionPi (m) (p'')
                                        (retrieveRelatedStatesFromV (R(Fr(m))) s)
@@ -971,6 +1194,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    end
                   | star reo => match p' with
+                                   | quiFormulaDia x phi | quiFormulaBox x phi => false
                                    | proposition p'' => 
                                        boxSatisfactionPi (m) (p'')
                                        (retrieveRelatedStatesFromV (RTC(m)) s)
@@ -1048,6 +1272,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
                      end
     | diamond t pi p' => match pi with
                   | sProgram reo => match p' with
+                                   | quiFormulaDia x phi | quiFormulaBox x phi => false
                                    | proposition p'' => 
                                        diamondSatisfactionPi (m) (p'')
                                        (retrieveRelatedStatesFromV (R(Fr(m))) s)
@@ -1079,6 +1304,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
                                            ((retrieveRelatedStatesFromV (R(Fr(m))) s)))
                                    end
                   | star reo => match p' with
+                                   | quiFormulaDia x phi | quiFormulaBox x phi => false
                                    | proposition p'' => 
                                        diamondSatisfactionPi (m) (p'')
                                        (retrieveRelatedStatesFromV (RTC(m)) s)
@@ -1159,27 +1385,27 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   Lemma singleModelStepSound_1 : forall m, forall n, forall phi, forall s, 
    phi = proposition n /\ (V(m) s n) = true -> singleModelStep m phi s = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
   Lemma singleModelStepSound_2 : forall m, forall phi, forall phi', forall s, 
    phi = neg phi' /\ (singleModelStep m phi' s) = false -> (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. rewrite H3. reflexivity.
+  intros. destruct H3. rewrite H3. simpl. rewrite H4. reflexivity.
   Defined.
 
   Lemma singleModelStepSound_3 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (and phi' phi'') /\ ((singleModelStep m phi' s) && (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
   Lemma singleModelStepSound_4 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
   Lemma singleModelStepSound_5 : forall m, forall phi, forall phi', forall phi'', forall s,
@@ -1187,14 +1413,14 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
                                (negb (singleModelStep m phi'' s) || (singleModelStep m phi' s))  = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
   Lemma singleModelStepSound_6 : forall m, forall phi, forall phi', forall phi'', forall s,
   phi = (or phi' phi'') /\ ((singleModelStep m phi' s) || (singleModelStep m phi'' s)) = true
     ->  (singleModelStep m phi s) = true.
   Proof.
-  intros. destruct H2. rewrite H2. simpl. exact H3.
+  intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
   (* The evaluation of an atomic formula is done as follows *)
@@ -1254,25 +1480,41 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   Section ModelExecution.
 
   Variable name state data: Type.
-  Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq}.
+  Context `{EqDec name eq} `{EqDec data eq} `{EqDec state eq} `{EqDec (data -> data) eq}.
+  Context (hfil:`{EqDec (data -> bool) eq}).
 
   Obligation Tactic := congruence.
   Program Instance dataProp_eqdec2 {name data : Type} `{EqDec name eq} `{EqDec data eq} : EqDec (dataProp name data) eq :=
-    {
-      equiv_dec x y :=
-        match x, y with
-          | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
-          | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
-          | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
-          | dataInPorts a x , dataInFifo b y c => in_right
-          | dataInPorts a x , dataBothPorts _ b y => in_right
-          | dataInFifo a x b , dataInPorts c y => in_right
-          | dataInFifo a x b , dataBothPorts _ c y => in_right
-          | dataBothPorts _ a b , dataInPorts c y => in_right
-          | dataBothPorts _ a b , dataInFifo c y d  => in_right
-        end
-     }.
-
+   {
+    equiv_dec x y (* := fix rec x y *) :=
+      match x, y with
+        | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+        | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+        | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+ (*        | quiFormulaBox x phi, quiFormulaBox y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right
+        | quiFormulaDia  x phi, quiFormulaDia y phi' => if x == y then if rec phi phi' then in_left else in_right else in_right *)
+        | dataInPorts a x , dataInFifo b y c => in_right
+        | dataInPorts a x , dataBothPorts _ b y => in_right
+(*         | dataInPorts a x , quiFormulaBox y phi' => in_right
+        | dataInPorts a x , quiFormulaDia y phi' => in_right *)
+        | dataInFifo a x b , dataInPorts c y => in_right
+        | dataInFifo a x b , dataBothPorts _ c y => in_right
+(*         | dataInFifo a x b , quiFormulaBox y phi' => in_right
+        | dataInFifo a x b , quiFormulaDia y phi' => in_right *)
+        | dataBothPorts _ a b , dataInPorts c y => in_right
+        | dataBothPorts _ a b , dataInFifo c y d  => in_right
+(*         | dataBothPorts _ a b , quiFormulaBox x phi  => in_right
+        | dataBothPorts _ a b , quiFormulaDia x phi  => in_right *)
+(*         | quiFormulaBox x phi , dataInPorts c y => in_right
+        | quiFormulaBox x phi , dataInFifo c y d  => in_right
+        | quiFormulaBox x phi , dataBothPorts _ a b => in_right
+        | quiFormulaBox x phi, quiFormulaDia y phi' => in_right
+        | quiFormulaDia x phi , dataInPorts c y => in_right
+        | quiFormulaDia x phi , dataInFifo c y d  => in_right
+        | quiFormulaDia x phi, dataBothPorts _ a b => in_right
+        | quiFormulaDia x phi , quiFormulaBox y phi' => in_right *)
+      end
+  }.
   (* A model checker for ReLo *)
 
   Definition emptyLambda (s : state) (n: name) := 0%Q.
@@ -1283,20 +1525,14 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   Definition emptyModel := mkmodel ( mkframe [] [] emptyLambda emptyDelta ) (emptyVal).
 
-  Definition retrieveSinglePortProp (t : set (dataConnector name data)) (index : nat) (n : name)
+  Fixpoint retrieveSinglePortProp (t : set (dataConnector name data)) (index : nat) (n : name)
     : set (dataProp name data) :=
     match t with
     | [] => []
     | a::t' => match a with
-               | dataPorts a x => if (n == a) then [dataInPorts n x] else []
-               | fifoData a x b => []
+               | dataPorts a x => if (n == a) then [dataInPorts n x] else retrieveSinglePortProp t' index n
+               | fifoData a x b => retrieveSinglePortProp t' index n
                end
-    end.
-
-  Definition sameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : bool :=
-    match n1,n2 with
-    | dataPorts a x, dataPorts b y => (* (nequiv_decb a b) && *) (equiv_decb x y)
-    | _, _ => false
     end.
 
   Definition portsHaveSameData (n1 : (dataConnector name data)) (n2 : (dataConnector name data)) : set (dataProp name data) :=
@@ -1313,9 +1549,10 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     end.
 
   Fixpoint constructSetOfStates (phi: (formula) (set (dataConnector name data))
-    (syntaticProgram name)) (n: nat) : set nat :=
+    (syntaticProgram name data)) (n: nat) : set nat :=
     match phi with 
     | proposition p => [n]
+    | quiFormulaDia x phi | quiFormulaBox x phi => [n]
     | neg p => set_add equiv_dec (n) (constructSetOfStates p (n))
     | and a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
                                      (set_add equiv_dec (n) (constructSetOfStates b (n)))
@@ -1364,8 +1601,8 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   Definition buildValidPropositions (N: set name) (index: nat) (t: set (dataConnector name data)) 
      : set (dataProp name data) :=
-    ((flat_map(retrieveTwoPortsProp index t) (t)) ++ 
-    (flat_map(retrieveSinglePortProp t index) (N))) ++
+    ((flat_map(retrieveTwoPortsProp index t) (t))) ++ 
+    (flat_map(retrieveSinglePortProp t index) (N)) ++
     (flat_map(retrieveFIFOdataProp index t) t).
 
   Fixpoint getProp (setProp: set (dataProp name data)) (n: (dataProp name data)) : bool :=
@@ -1528,7 +1765,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   (*Now we need to glue the pieces together to process the entire current states obtained by f(t)*)
   Fixpoint processGeneralStep (m: model name nat data) (N: set name)(visitedStates : (set (nat * (set (dataConnector name data)))))
   (calc : calcProps) (currentSetOfStates : set (nat * set (dataConnector name data)))
-  (pi : (reoProgram name)) (index : nat) :=
+  (pi : (reoProgram name data)) (index : nat) :=
   match currentSetOfStates with 
   | [] => (m, (visitedStates,(index,calc)))
   | currentState::moreStates => processGeneralStep (fst(processIntermediateStep m (fst(currentState)) N visitedStates calc
@@ -1550,6 +1787,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     (*setStates : set of already visited states *)
     match phi with
     | proposition p => m
+    | quiFormulaDia x phi | quiFormulaBox x phi => m
     | diamond t' pi p => match pi with
                         | sProgram pi' => getModel' (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1611,6 +1849,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     (*This is the new version of old "getVisitedStates"*)
     match phi with
     | proposition p => setStates
+    | quiFormulaDia x phi | quiFormulaBox x phi => setStates
     | diamond t' pi p => match pi with
                         | sProgram pi' => getSetVisitedStates (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1665,7 +1904,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   Fixpoint expandStarFormulas (m : model name nat data) (n : set name) (t : set (set (dataConnector name data))) (index:nat)
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) (upperBound : nat) :=
     (*upperBound - limits the search space for \star if no satisfiable model could be found until <upperBound> iterations *)
-    (* singleModelStep (m:model) (formula : formula) (s:state) *)
     match upperBound with
     | 0 => ( m, ([], upperBound))
     | Datatypes.S k => match phi with
@@ -1726,6 +1964,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     (* state *)
     match phi with
     | proposition p => m
+    | quiFormulaDia x phi | quiFormulaBox x phi => m
     | diamond t' pi p => match pi with
                         | sProgram pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
@@ -1746,7 +1985,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           (*index begin *) 
                                           (index)
                                           (*index end*)
-                                          p (setStates) 
+                                          phi (setStates) 
                                           (*calc begin*) 
                                           (calc)
                                           (*calc end*) upperBound)
@@ -1771,7 +2010,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           (*index begin *) 
                                           (index)
                                           (*index end*)
-                                          p (setStates) 
+                                          phi (setStates) 
                                           (*calc begin*) 
                                           (calc)
                                           (*calc end*) upperBound)
@@ -1856,6 +2095,12 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   | leaf : (state * (((formula name data)) * bool)) -> binTree
   | node : (state * (((formula name data)) * bool)) -> binTree -> binTree -> binTree.
 
+  (*Auxiliary tree definition with a parent relation*)
+  Inductive auxBinTree : Type :=
+  | auxNilLeaf : auxBinTree -> auxBinTree
+  | auxLeaf : (state * (((formula name data)) * bool)) -> auxBinTree -> auxBinTree
+  | auxNode : (state * (((formula name data)) * bool)) -> auxBinTree -> auxBinTree -> auxBinTree -> auxBinTree.
+
   
   (*A Tableau for Relo is defined as a Coq record containing the proof tree and the sequence of states it "visits"*)
   Record tableau := mkTableau {
@@ -1867,8 +2112,8 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
 
   Section TableauFunc.
   (*Tableau-related functionalities.*)
-  (* Tableau-related definitions has been splitted in two different functions to enable its formalization with states, 
-    as well as with states as natural numbers (useful for automating its construction *)
+  (* Tableau-related definitions has been splitted in two different modules to enable its formalization with states as
+    defined by the user, as well as with states as natural numbers (useful for automating its construction *)
 
   Variable state name data : Type.
 
@@ -1881,10 +2126,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     |  0, Datatypes.S n | Datatypes.S n, 0 => in_right
     end
   }.
-
-  Check tableau.
-
-  Check formula_eqDec.
 
   Definition formula2Tableau (phi: formula name data) :=
     mkTableau (leaf (0, (phi, false))) ([]).
@@ -1910,13 +2151,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     | leaf phi => ((node phi) (b1) (b2))
     | node phi a b => (* (node phi) (addBranchLeftToTableau a b1 b2) ((addBranchLeftToTableau b b1 b2)) *)
                       (addBranchLeftToTableau a b1 b2)
-  end.
-
-  Fixpoint addBranchLeftToTableau' (t : binTree nat name data) (b1 : binTree nat name data) (b2 : binTree nat name data) :=
-  match t with
-    | nilLeaf _ _ _ => t
-    | leaf phi => ((node phi) (b1) (b2))
-    | node phi a b =>  (node phi) (addBranchLeftToTableau a b1 b2) ((addBranchLeftToTableau b b1 b2))
   end.
 
   Fixpoint addRightToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
@@ -1946,119 +2180,230 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     equiv_decb f1 f2.
 
   Fixpoint tableauRules (* t: tableau nat name data *) 
-  (t: binTree nat name data) (origT:  binTree nat name data) (statesTree : set (nat * nat)) (nodeContent : nat * (((formula name data)) * bool)) 
+  (t: binTree nat name data) (origT:  binTree nat name data) (statesTree : set (nat * nat)) 
+  (nodeContent : nat * (((formula name data)) * bool)) 
+  (state : nat) (indexQuiFormulaBox : nat) (indexQuiFormulaDiamond : nat)
   (*t: proof tree to have its rules applied*)
   (*t': original proof tree, a copy of t. Needed so we don't lose the original tree when decomposing it.*) :=
+  (*TODO : trocar a recursao desta funçao por uma busca que acha o no na arvore caso exista, e adicione apenas a formula. Aparentemente a arvore nao precisa ser
+    reconstruida*)
   match (* (proofTree(t)) *) t with
-  (*TODO: para o caso do box e diamond, avaliar o programa e aplicar a regra conforme necessário (se for ou não star)*)
   | nilLeaf _ _ _ => (t, statesTree)
   | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
-                then 
-                match (fst(snd(phi))) with
+                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) then match (fst(snd(phi))) with
                 | proposition p => (origT, statesTree)
-                | and phi1 phi2 => if (snd(snd(phi))) then
-                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                | quiFormulaBox n phi' => if negb (snd(snd(phi))) then
+                                          match phi' with 
+                                          | box t' pi p => match pi with
+                                                           | star pi' => ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (p , false))) 
+                                                                                             (node ((fst(phi)), (p , true)) 
+                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)))
+                                                                    , (statesTree))
+                                                           | sProgram pi' => (origT, statesTree)
+                                                           end
+                                          | _ => (origT, statesTree)
+                                          end
+                                          else  (origT, statesTree)
+                | quiFormulaDia n phi' => if (snd(snd(phi))) then
+                                          match phi' with 
+                                          | diamond t' pi p => match pi with
+                                                           | star pi' => ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (p , true))) 
+                                                                                             (node ((fst(phi)), (p , false)) 
+                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)))
+                                                                    , (statesTree))
+                                                           | sProgram pi' => (origT, statesTree)
+                                                           end
+                                          | _ => (origT, statesTree)
+                                          end
+                                          else  (origT, statesTree)
+                 | and phi1 phi2 => if (snd(snd(phi))) then
+                                    ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , true))  
                                                                (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                   else ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , false)))
                                                                     (leaf ((fst(phi)), (phi2 , false))))
                                                                     , ([]))
-                | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , true)))
+                 | or phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , true)))
                                                                     (leaf ((fst(phi)), (phi2 , true))))
                                                                     , ([]))
-                                   else ((addBranchLeftToTableau (origT) (node ((fst(phi)), (phi1 , false))  
-                                            (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data))
-                                                                    (nilLeaf nat name data))
-                                                                    , ([]))
-                                      (* ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
-                                            (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) *) (* ou colocar a regra do false aqui *)
-                | neg phi1 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
-                                   else ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
-                | box t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))
-                                                                  )), ([]))
-                                   else  ((addLeftToTableau (origT) ((leaf ((Datatypes.S(fst(phi))), (p , false)))
-                                                                  )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                | diamond t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                    ((addLeftToTableau (origT) ((leaf ((Datatypes.S (fst(phi))), (p , true)))
-                                                                  )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                                   else ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))
-                                                                  )), ([]))
+                                   else ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                 | neg phi1 => if (snd(snd(phi))) then
+                                   ((addLeftToTableau (leaf phi) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
+                                   else ((addLeftToTableau (leaf phi) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
+                | box t' pi p => match pi with
+                                | sProgram pi' => if (snd(snd(phi))) then
+                                                   ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), (p , true))))), (statesTree))
+                                                  else ((addLeftToTableau (leaf phi) ((leaf ((state), (p , false))))) , ([((fst(phi)), (state))]))
+                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (p , true))
+                                                 (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                 (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
+                                                                           (nilLeaf nat name data)))), ([]))
+                                               else ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                end
+                | diamond t' pi p => match pi with
+                                     | sProgram pi' => if (snd(snd(phi))) then
+                                                      ((addLeftToTableau (leaf phi) ((leaf ((state), (p , true)))
+                                                                                    )), ([((fst(phi)), (state))]))
+                                                     else ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), (p , false)))
+                                                                                    )), ([]))
+                                     | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                                      else ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (p , true))
+                                                           (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                      (leaf ((fst(phi)), (((diamond t' (sProgram pi')(diamond t' (star pi') p))) , false))) 
+                                                                                     (nilLeaf nat name data)))), ([]))
+                                     end                 
                 | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (origT) ((node phi)  
-                                                               (leaf ((fst(phi)), (phi1 , false))) (leaf ((fst(phi)), (phi2 , true))))), ([]))
-                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) 
+                                   ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))))
+                                                                    , ([]))
+                                   else ((addBranchLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data)), ([])) 
                 | _ => (t, statesTree)
                 end
                 else (t, statesTree)
-  (*nao passar o no original: as funç~oes estao corretas. o que t´a acontecendo ´e que voce ta reconstruindo a ´arvore do inicio 
-    2x *)
   | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
-                then 
-                 match (fst(snd(phi))) with
+                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) then match (fst(snd(phi))) with
                 | proposition p => (origT, statesTree)
-                | and phi1 phi2 => if (snd(snd(phi))) then
+                | quiFormulaBox n phi' => if negb (snd(snd(phi))) then
+                                          match phi' with 
+                                          | box t' pi p => match pi with
+                                                           | star pi' => ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (p , false))) 
+                                                                                             (node ((fst(phi)), (p , true)) 
+                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)))
+                                                                    , (statesTree))
+                                                           | sProgram pi' => (origT, statesTree)
+                                                           end
+                                          | _ => (origT, statesTree)
+                                          end
+                                          else  (origT, statesTree)
+                | quiFormulaDia n phi' => if (snd(snd(phi))) then
+                                          match phi' with 
+                                          | diamond t' pi p => match pi with
+                                                           | star pi' => ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (p , true))) 
+                                                                                             (node ((fst(phi)), (p , false)) 
+                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)))
+                                                                    , (statesTree))
+                                                           | sProgram pi' => (origT, statesTree)
+                                                           end
+                                          | _ => (origT, statesTree)
+                                          end
+                                          else  (origT, statesTree)
+                 | and phi1 phi2 => if (snd(snd(phi))) then
                                     ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
                                                                (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else ((addBranchLeftToTableau' (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                   else ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
                                                                     (leaf ((fst(phi)), (phi2 , false))))
                                                                     , ([]))
-                | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau' (node phi x y) (leaf ((fst(phi)), (phi1 , true)))
+                 | or phi1 phi2 => if (snd(snd(phi))) then
+                                   ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , true)))
                                                                     (leaf ((fst(phi)), (phi2 , true))))
                                                                     , ([]))
                                    else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , false))  
                                                                (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
-                | neg phi1 => if (snd(snd(phi))) then
+                 | neg phi1 => if (snd(snd(phi))) then
                                    ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
                                    else ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
-                | box t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do false).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                   ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , true)))
-                                                                  )), ([]))
-                                   else  ((addLeftToTableau (node phi x y) ((leaf ((Datatypes.S(fst(phi))), (p , false)))
-                                                                  )) , ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                | diamond t' pi p => if (snd(snd(phi))) then
-                                   (*Aqui tem que adicionar um estado no set dos estados visitados além do resultado da regra (caso do true).
-                                   Dai, o tableau tem que ser passado como parâmetro*)
-                                    ((addLeftToTableau (node phi x y) ((node ((Datatypes.S (fst(phi))), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )), ([((fst(phi)), (Datatypes.S (fst(phi))))]))
-                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true)) 
-                                                                  (nilLeaf nat name data) (nilLeaf nat name data))
-                                                                  )), ([]))
+                | box t' pi p => match pi with
+                                | sProgram pi' => if (snd(snd(phi))) then
+                                                   ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , true))))), (statesTree))
+                                                  else ((addLeftToTableau (node phi x y) ((leaf ((state), (p , false))))) , ([((fst(phi)), (state))]))
+                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true))
+                                                 (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                 (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
+                                                                           (nilLeaf nat name data)))), ([]))
+                                               else ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                end
+                | diamond t' pi p => match pi with
+                                     | sProgram pi' => if (snd(snd(phi))) then
+                                                      ((addLeftToTableau (node phi x y) ((leaf ((state), (p , true)))
+                                                                                    )), ([((fst(phi)), (state))]))
+                                                     else ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , false)))
+                                                                                    )), ([]))
+                                     | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                                      else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true))
+                                                           (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                      (leaf ((fst(phi)), (((diamond t' (sProgram pi')(diamond t' (star pi') p))) , false))) 
+                                                                                     (nilLeaf nat name data)))), ([]))
+                                     end                 
                 | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau' (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
+                                   ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
                                                                     (leaf ((fst(phi)), (phi2 , false))))
                                                                     , ([]))
-                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) 
+                                   else ((addBranchLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data)), ([])) 
                 | _ => (t, statesTree)
                 end
                 (*Not in the actual node: keep searching in both left and right nodes of the current level o t*)
-                else ((node phi (fst(tableauRules x origT statesTree nodeContent)) 
-                               (fst(tableauRules y origT statesTree nodeContent))), statesTree)
-  end.  
+                else ((node phi (fst(tableauRules x origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
+                               (fst(tableauRules y origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))), statesTree)
+  end. 
 
-  Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
-    (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent)) 
-              (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent))). 
+  Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) 
+    (state : nat)  (indexQuiFormulaBox : nat) (indexQuiFormulaDiamond : nat):=
+    (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
+              (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))). 
+
+  (*We also provide functionalities to check whether a Tableau is closed *)
+
+  Fixpoint getAllLeafNodes (t: binTree nat name data) : set (binTree nat name data):= 
+  match t with
+    | nilLeaf _ _ _ => []
+    | leaf phi => [leaf phi]
+    | node phi a b =>  (getAllLeafNodes a) ++ (getAllLeafNodes b)
+  end.
+
+  Fixpoint getBranch (t: binTree nat name data) (nodeContent : nat * (((formula name data)) * bool))
+  (*nodeContent: forula in the leaf node which we want to find a contradiction*) := 
+  match t with
+    | nilLeaf _ _ _ => t
+    | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
+                      && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) then (leaf phi) else (nilLeaf nat name data) 
+    | node phi a b => if searchBinTree a nodeContent 
+                      then (node phi (getBranch a nodeContent) (nilLeaf nat name data))
+                      else getBranch b nodeContent
+  end.
+
+  (*checks whether two formulae are contradictory*)
+  (*ERICK: precisa checar o valor da formula no estado*)
+  Definition areFormulasContradictory (f1: (formula name data)) (f2: (formula name data)) :=
+  match f1, f2 with
+  | neg phi, phi' | phi, neg phi' => equiv_decb (phi) (phi')
+  | _, _ => false
+  end.
+
+  (*Given a formula of a leaf node, checks whether there is a contradiction on a branch.*)
+  Fixpoint isBranchContradictory  (t: binTree nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
+  match t with 
+    | nilLeaf _ _ _ => false
+    | leaf phi => (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
+                      && ((equiv_decb (snd(snd(nodeContent))) (negb(snd(snd(phi))))) || 
+                         ((equiv_decb (negb(snd(snd(nodeContent)))) (snd(snd(phi))))))
+    | node phi a b => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
+                      && ((equiv_decb (snd(snd(nodeContent))) (negb(snd(snd(phi))))) || 
+                         ((equiv_decb (negb(snd(snd(nodeContent)))) (snd(snd(phi))))))
+                      (*é estranho ver os dois braços, sendo que um deles sempre vai ser nilLeaf a cada branch.*)
+                      then true else (isBranchContradictory a nodeContent) || (isBranchContradictory b nodeContent)
+  end.
+
+  (*Checks whether there is a branch in T with leaf node <nodeContent> which is contradictory*)
+  Definition checkContradictoryBranch (t: binTree nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
+  (*nodeContent here is the leaf node to retrive the *)
+    isBranchContradictory (getBranch t nodeContent) (nodeContent).
+
+    (*  Ideia: para qqr phi, achar um neg phi
+            se phi for um qui, tem que ver se existe um estado já visitado que seja cópia do atual, seguindo as condições definidas.*)
+  
 
   End TableauFunc.
 (*   End ReoLogicCoq. *)
 
 Require Export ListSet.
 Require Export List.
-Require Export Classes.EquivDec.
+Require Export Classes.EquivDec.  
 Require Export Coq.Program.Program.
 Require Export QArith.
-(* Require Export Coq.Strings.String. *)
