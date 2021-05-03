@@ -1,8 +1,11 @@
 Require Import LogicMain.
+Import ListNotations.
 
-Inductive sequencerPorts := A | B | C | D | E | F | G.
+Obligation Tactic := congruence.
 
-Instance sequencerPortsEq : EqDec sequencerPorts eq :=
+Inductive ports := A | B | C | D | E | F | G.
+
+Program Instance portsEq : EqDec ports eq :=
 	{equiv_dec x y := 
 		match x, y with 
 		| A,A => in_left 
@@ -56,29 +59,36 @@ Instance sequencerPortsEq : EqDec sequencerPorts eq :=
 		| G,F => in_right 
 		end 
 	}.
-  Proof.
-  all:congruence.
-  Defined.
+ 
+Inductive statesLossyFifo := D_A | D_B | D_C | D_BFIFOC.
 
-Definition program1 := [sync A B; sync B E; sync B C; sync C D; sync D A].
-Definition processed1 := parse program1 [].
+Program Instance statesLossyFifoEqDec : EqDec statesLossyFifo eq := 
+	{equiv_dec x y := 
+		match x, y with 
+		| D_A,D_A => in_left 
+		| D_B,D_B => in_left 
+		| D_C,D_C => in_left 
+		| D_BFIFOC,D_BFIFOC => in_left
+    | D_A,D_B => in_right
+		| D_A,D_C => in_right
+		| D_A,D_BFIFOC => in_right
+    | D_B,D_A => in_right
+		| D_B,D_C => in_right
+		| D_B,D_BFIFOC => in_right
+    | D_C,D_A => in_right
+		| D_C,D_B => in_right
+    | D_C, D_BFIFOC => in_right
+		| D_BFIFOC,D_A => in_right
+    | D_BFIFOC,D_B => in_right
+		| D_BFIFOC,D_C => in_right
 
-Eval compute in processed1.
+		end 
+	}.
 
-Eval compute in length processed1.
-
-Definition data1 := [dataPorts B 1].
-
-Eval compute in go data1 processed1 (length processed1) [].
-
-Eval compute in fire data1 [goTo nat B E].
-
-
-(* We define the states of the model *)
 
 Inductive statesSequencer := DA | DB | DC | DD | DE | DF | DG | D_DFIFOE | D_EFIFOF | D_FFIFOG.
 
-Instance statesEqDec : EqDec statesSequencer eq := 
+Program Instance statesEqDec : EqDec statesSequencer eq := 
 	{equiv_dec x y := 
 		match x, y with 
 		| DA,DA => in_left 
@@ -183,94 +193,49 @@ Instance statesEqDec : EqDec statesSequencer eq :=
 		| DD,D_FFIFOG => in_right  
 		end 
 	}.
-Proof.
-all:congruence.
-Defined.
 
-(* We define the Sequencer connector *)
-Definition SequencerProgram := [fifo D E; sync E A; fifo E F;
-sync F B; sync F G; fifo G C; sync G A].
+Close Scope Q_scope.
 
-(* experimental *)
-Definition lambdaTest (s: statesSequencer) (port: sequencerPorts) : QArith_base.Q := 1.
+Program Instance dataProp_eqdec2 {name data : Type} `{EqDec name eq} `{EqDec data eq} : EqDec (dataProp name data) eq :=
+    {
+      equiv_dec x y :=
+        match x, y with
+          | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+          | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+          | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+          | dataInPorts a x , dataInFifo b y c => in_right
+          | dataInPorts a x , dataBothPorts _ b y => in_right
+          | dataInFifo a x b , dataInPorts c y => in_right
+          | dataInFifo a x b , dataBothPorts _ c y => in_right
+          | dataBothPorts _ a b , dataInPorts c y => in_right
+          | dataBothPorts _ a b , dataInFifo c y d  => in_right
+        end
+     }.
 
-(* We define \delta \colon S \to T as follows.*)
-Definition deltaSequencer (s:statesSequencer) :=
-  match s with
-  | DA => [dataPorts A 0;dataPorts A 1]
-  | DB => [dataPorts B 0;dataPorts B 1]
-  | DC => [dataPorts C 0;dataPorts C 1]
-  | DD => [dataPorts D 0;dataPorts D 1]
-  | DE => [dataPorts E 0;dataPorts E 1]
-  | DF => [dataPorts F 0;dataPorts F 1]
-  | DG => [dataPorts G 0;dataPorts G 1]
-  | D_EFIFOF => [fifoData E 0 F; fifoData E 1 F]
-  | D_FFIFOG => [fifoData F 0 G; fifoData F 1 G]
-  | D_DFIFOE => [fifoData D 0 E; fifoData D 1 E]
-  end.
-
-Definition frame1 := mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_FFIFOG] 
-                    [(DD,D_DFIFOE);(D_DFIFOE,DE);(DE,DA);(DE,D_EFIFOF);(D_EFIFOF,DF);(DF,DB);(DF,D_FFIFOG);
-                      (D_FFIFOG,DG);(DG,DD)] lambdaTest deltaSequencer.
+(** Sequencer - Simplified**)
+Definition SequencerProgram := [flowFifo nat D E; flowSync nat E A; flowFifo nat E F;
+flowSync nat F B; flowFifo nat F G; flowSync nat G C; flowSync nat G D].
 
 
-(* Idea  - map a natural number to a proposition. Then, our valuation function state -> set nat
-  tells us which propositions are valid in a state. This is entirely controlled by the user's model. *)
+Definition pi := sProgram (reoProg SequencerProgram []).
 
-Definition nat2Prop (n: nat) : Prop :=
-  match n with
-  | 1 => forall n, n = 2
-  | 2 => 100 = 100
-  | 3 => 12 = 34
-  | _ => False
-  end.
-
-
-Definition getProps (s: statesSequencer) : set nat :=
-  match s with
-  | DA => [1] (*An empty sete denotes no valid propositions on a state *)
-  | DB => []
-  | DC => []
-  | DD => []
-  | DE => [] 
-  | DF => []
-  | DG => []
-  | D_EFIFOF => []
-  | D_FFIFOG => []
-  | D_DFIFOE => [2] 
-  end.
-
-Definition valuationTest (s: statesSequencer) (p : nat) := 
-  existsb (fun x : nat => beq_nat p x) (getProps s).
-
-Eval compute in valuationTest DA (2).
-
-Eval compute in valuationTest DE (1).
-
-
-Definition model1 := mkmodel frame1 valuationTest.
-
-Definition pi := sProgram SequencerProgram.
+Definition piStar' := star (reoProg SequencerProgram []).
 
 Definition t := [dataPorts D 1].
 
-Eval compute in singleFormulaVerify model1
-(box t pi (proposition sequencerPorts nat 2)) t.
+(*Example 1 - TABLEAUX 2021*)
 
-Eval compute in singleFormulaVerify model1
-      (box t pi 
-        (diamond t pi 
-          (diamond t pi
-            ((proposition sequencerPorts nat 1))))) t.
+Definition example1Relo := Eval compute in constructModel [A ; B ; C ; D ; E ; F ; G] [t] 
+  (imp (box t piStar'((((((((proposition (dataInPorts C 1)))))))))) 
+        (box t piStar'((((((((proposition (dataInPorts B 1))))))))))) (length(SequencerProgram) * 3).
 
-Eval compute in singleFormulaVerify model1
-      (box t pi 
-        (diamond t pi 
-          (diamond t pi
-            (and (proposition sequencerPorts nat 1) (proposition sequencerPorts nat 1))))) t.
+Eval compute in example1Relo.
 
+(*The validity of the formula is checked by the below definition*)
 
-Eval compute in singleFormulaVerify model1
-  (diamond t pi (box t pi 
-    (proposition sequencerPorts nat 1))) t.
+Definition validityExample1Relo := singleFormulaVerify example1Relo 
+  (imp (box t piStar'((((((((proposition (dataInPorts C 1)))))))))) 
+        (box t piStar'((((((((proposition (dataInPorts B 1))))))))))) t.
+
+Eval compute in validityExample1Relo.
 

@@ -196,7 +196,7 @@ Program Instance statesEqDec : EqDec statesSequencer eq :=
 
 (* LossyFIFO - simplified *)
 
-Definition lossyFifoProgram := [flowLossySync A B;flowFifo B C].
+Definition lossyFifoProgram := [flowLossySync nat A B;flowFifo nat B C].
 
 Close Scope Q_scope.
 
@@ -283,8 +283,8 @@ Eval compute in singleFormulaVerify lossyFifoModel
                   (neg (box t' pi' (proposition (dataInFifo B 1 C))))) t'.
 
 (* Sequencer - Simplified*)
-Definition SequencerProgram := [flowFifo D E; flowSync E A; flowFifo E F;
-flowSync F B; flowFifo F G; flowSync G C; flowSync G D].
+Definition SequencerProgram := [flowFifo nat D E; flowSync nat E A; flowFifo nat E F;
+flowSync nat F B; flowFifo nat F G; flowSync nat G C; flowSync nat G D].
 
 (* experimental *)
 Definition sequencerLambda (s: statesSequencer) (port: ports) : QArith_base.Q := 1.
@@ -307,20 +307,6 @@ Definition deltaSequencer (s:statesSequencer) :=
 Definition sequencerFrame := mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_FFIFOG] 
                     [(DD,D_DFIFOE);(D_DFIFOE,DE);(DE,DA);(DE,D_EFIFOF);(D_EFIFOF,DF);(DF,DB);(DF,D_FFIFOG);
                       (D_FFIFOG,DG);(DG,DC);(DG,DD)] sequencerLambda deltaSequencer.
-
-
-(* Idea  - map a natural number to a proposition. Then, our valuation function state -> set nat
-  tells us which propositions are valid in a state. This is entirely controlled by the user's model. *)
-
-(* Definition sequencerPropositions (n: nat) : Prop :=
-  match n with
-  | 1 => dataInPort (dataPorts A 0) n
-  | 2 => dataInPort (dataPorts B 0) n
-  | 3 => dataInPort (dataPorts C 0) n
-  | 4 => dataInPort (dataPorts D 0) n
-  | _ => False
-  end. *)
-
 
 Definition getPropositionSequencer (s: statesSequencer) :=
   match s with
@@ -466,6 +452,8 @@ Definition compGrete2 := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t
     (getNewIndexesForStates [t] [] 0) 
     (mkcalcProps [] 0). 
 
+Eval compute in compGrete2.
+
 (*18/02/2021 - Tests with \star*)
 
 Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
@@ -474,7 +462,7 @@ Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; 
   (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0) 9.
-(*Tá andando mais do que deveria na primeira passada apenas, mas voltou a andar *)
+
 Eval compute in star1.
 
 (*O Trecho de código abaixo dá false pq o conjunto R é vazio para avaliação do RTC.*)
@@ -495,9 +483,32 @@ Eval compute in getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0)
 
 (*13/03/2021* - getModel joins both behaviours in one definition *)
 
-(*ConstructModel não tá Ok p star*)
+Definition constructModeltest1 := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+    (box t piStar'((((((((proposition (dataInPorts G 1))))))))))
+    (getNewIndexesForStates [t] [] 0) 
+    (mkcalcProps [] 0) 10.
+
+Eval compute in constructModeltest1.
+
+Definition constructModeltest1' := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; G] (t) 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+  (* (and (box t piStar'((((((((proposition (dataInPorts D 1))))))))))
+       (box t piStar'((((((((proposition (dataInFifo D 1 E)))))))))))  *)
+  (box t piStar'((((((((proposition (dataInPorts C 1))))))))))
+    (getNewIndexesForStates [t] [] 0) 
+    ((* getNewValFunc *) (mkcalcProps [] 0) (* [A ; B ; C ; D ; E ; F ; G] [t] 0 *) ) 10.
+
+Eval compute in constructModeltest1'.
+
+(* Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+  (1)
+  (box t piStar'((((((((proposition (dataInPorts G 1)))))))))) 
+  (getNewIndexesForStates [t] [] 0) 
+    (getNewValFunc (mkcalcProps [] 0)
+      [A ; B ; C ; D ; E ; F ; G] [t] 0) 9. *)
 
 Definition star1Ok := Eval compute in constructModel [A ; B ; C ; D ; E ; F ; G] [t] 
-  (box t piStar'((((((((proposition (dataInPorts G 1)))))))))) 10.
+  (box t piStar'((((((((proposition (dataInPorts E 1)))))))))) 10.
 
 Eval compute in star1Ok.

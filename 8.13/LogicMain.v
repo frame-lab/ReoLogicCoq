@@ -1040,6 +1040,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   Definition dataInFifoProp (n: dataConnector) (d: data) : Prop :=
     dataFromPorts n = d. *)
 
+  (*descontinued
   Fixpoint getData (portsData : set dataConnector) (portName : name) (portData : data) : bool :=
     match portsData with 
     | a::t => match a with
@@ -1061,7 +1062,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   simpl. split. right. exact H3. split. exact H5. assumption.
   intros. rewrite H4 in H3. exists a. exists n. exists d.
   split. simpl. left. auto. auto.
-  Defined.
+  Defined. *)
 
   (* We retrieve all states of the model which is related to a state v by R*)
   Fixpoint retrieveRelatedStatesFromV (setStates : set (state * state)) (s : state) 
@@ -1423,7 +1424,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   intros. destruct H3. rewrite H3. simpl. exact H4.
   Defined.
 
-  (* The evaluation of an atomic formula is done as follows *)
+  (* The evaluation of formulas is done as follows *)
 
   Definition singleFormulaVerify (m : model) (p : formula) 
     (t: set dataConnector) : bool :=
@@ -1548,23 +1549,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
     | a::t' => portsHaveSameData a n++(retrieveTwoPortsProp index t' n)
     end.
 
-  Fixpoint constructSetOfStates (phi: (formula) (set (dataConnector name data))
-    (syntaticProgram name data)) (n: nat) : set nat :=
-    match phi with 
-    | proposition p => [n]
-    | quiFormulaDia x phi | quiFormulaBox x phi => [n]
-    | neg p => set_add equiv_dec (n) (constructSetOfStates p (n))
-    | and a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
-                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
-    | or a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
-                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
-    | imp a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
-                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
-    | biImpl a b => set_union equiv_dec (set_add equiv_dec (n) (constructSetOfStates a (n))) 
-                                     (set_add equiv_dec (n) (constructSetOfStates b (n)))
-    | box t pi p' => set_add equiv_dec (n) (constructSetOfStates p' (Datatypes.S n))
-    | diamond t pi p' => set_add equiv_dec (n) (constructSetOfStates p' (Datatypes.S n))
-  end.
 
   (* Equality relation for data items *)
   Program Instance dataConnectorEqDec {name} {data} `(eqa : EqDec name eq) `(eqb: EqDec data eq) : EqDec (dataConnector name data) eq :=
@@ -1954,6 +1938,9 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                        end
     end.
 
+(* OBS: incorporar expandStarFormulas dentro de getModel talvez permita a chamada dela, ao invés de getmodel'.
+  Não adianta. dá ruim *)
+
 (*We may finally define the model generator by means of the following function, which joins the search procedure *)
 
 Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
@@ -2013,7 +2000,16 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           phi (setStates) 
                                           (*calc begin*) 
                                           (calc)
-                                          (*calc end*) upperBound)
+                                          (*calc end*) upperBound) (* match upperBound with
+                                      | 0 => m
+                                      | Datatypes.S k => if singleModelStep (getModel m n t index (p) setStates calc k) (p)
+                                                        (*Retrieve the state denoted by T in the model
+                                                          Próximo passo, considerar que pode ter mais de um estado aqui...*) 
+                                                        (getOrigin (hd [] t) setStates) then
+                                                      (* singleModelStep *) 
+                                                      (getModel m n t index (p) setStates calc k) else 
+                                                      (getModel m n t index (box t' (sProgram pi') p)) setStates calc k
+                                      end *)
                         end
 
     (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well -not required as they
@@ -2130,36 +2126,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   Definition formula2Tableau (phi: formula name data) :=
     mkTableau (leaf (0, (phi, false))) ([]).
 
-  (*We use state as a natural number to easily instantiate a new state*)
-  (*Usage by tableauRules : *)
-  (*t : complete tableau *)
-  (*t' : result of application of rule *)
-  Fixpoint addLeftToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
-  match t with
-    | nilLeaf _ _ _ => t'
-    | leaf phi => ((node phi) t' (nilLeaf _ _ _))
-    | node phi a b => (node phi) (addLeftToTableau a t') ((addLeftToTableau b t'))
-  end.
-
-
-  (*Special case to add the branching-related functions (the branches must be attached to the last node of the proof tree, otherwise it
-    repeats itself *)
-  (* Does not reconstruct the tableau. This is done by the main function.*)
-  Fixpoint addBranchLeftToTableau (t : binTree nat name data) (b1 : binTree nat name data) (b2 : binTree nat name data) :=
-  match t with
-    | nilLeaf _ _ _ => t
-    | leaf phi => ((node phi) (b1) (b2))
-    | node phi a b => (* (node phi) (addBranchLeftToTableau a b1 b2) ((addBranchLeftToTableau b b1 b2)) *)
-                      (addBranchLeftToTableau a b1 b2)
-  end.
-
-  Fixpoint addRightToTableau (t : binTree nat name data) (t' : binTree nat name data) :=
-  match t with
-    | nilLeaf _ _ _ => t'
-    | leaf phi => ((node phi) (nilLeaf _ _ _) t')
-    | node phi a b => (node phi) (addRightToTableau a t') ((addRightToTableau b t'))
-  end.
-
   (* Equality for formula usage in this section needs to be parametrized, and supplied within usage*)
 
   Context `(eqa: EqDec (formula name data) eq).
@@ -2168,36 +2134,79 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   match t with
   | nilLeaf _ _ _ => false
   | leaf phi => (equiv_decb (fst(nodeContent)) (fst(phi))) && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi)))) 
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) 
+                && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) 
   | node phi a b => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
-                                                               && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
-                then true
-                else searchBinTree (a) nodeContent || searchBinTree b nodeContent
+                    && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                    then true
+                    else searchBinTree a nodeContent || searchBinTree b nodeContent
+  end.
+
+  Fixpoint searchBinTreeNode (t: binTree nat name data) (nodeContent : nat * (((formula name data)) * bool)) :=
+  match t with
+  | nilLeaf _ _ _ => None
+  | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi))) && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi)))) 
+                && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                then Some (leaf phi) else None 
+  | node phi a b => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equiv_decb (fst(snd(nodeContent))) (fst(snd(phi))))
+                    && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent))))
+                    then Some (leaf phi) 
+                    else if searchBinTree a nodeContent then searchBinTreeNode a nodeContent else searchBinTreeNode b nodeContent
   end.
 
   (* Required in order to correctly parametrize the corresponding EqDec *)
   Definition equalForumla (f1: (formula name data)) (f2: (formula name data)) :=
     equiv_decb f1 f2.
 
-  Fixpoint tableauRules (* t: tableau nat name data *) 
+  (*Usage by tableauRules : *)
+  (*t : complete tableau *)
+  (*t' : result of application of rule *)
+  (*leafNode:  denotes the branch where the derivation must be applied *)
+  Fixpoint addLeftToTableau (t : binTree nat name data) (t' : binTree nat name data) 
+  (leafNode : nat * (((formula name data)) * bool)) : (binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t (*se retornar t' vai duplicar a saida na raiz também*)
+    | leaf phi => if (equiv_decb (fst(leafNode)) (fst(phi)))  && (equalForumla (fst(snd(leafNode))) (fst(snd(phi))))
+                           && (equiv_decb (snd(snd(leafNode))) (snd(snd(phi)))) 
+                  then ((node phi) t' (nilLeaf _ _ _))
+                  else (leaf phi) 
+    | node phi a b => (node phi) (addLeftToTableau a t' leafNode) ((addLeftToTableau b t' leafNode)) 
+  end.
+
+  (*Special case to add the branching-related rules results (the branches must be attached to the last node of the proof tree,
+    but as two split leaf nodes*)
+  Fixpoint addBranchLeftToTableau (t : binTree nat name data) (b1 : binTree nat name data) (b2 : binTree nat name data)
+  (leafNode : nat * (((formula name data)) * bool)) : (binTree nat name data) :=
+  match t with
+    | nilLeaf _ _ _ => t
+    | leaf phi => if (equiv_decb (fst(leafNode)) (fst(phi)))  && (equalForumla (fst(snd(leafNode))) (fst(snd(phi))))
+                           && (equiv_decb (snd(snd(leafNode))) (snd(snd(phi)))) 
+                  then ((node phi) (b1) (b2))
+                  else (leaf phi)
+    | node phi a b => ((node phi) (addBranchLeftToTableau a b1 b2 leafNode) ((addBranchLeftToTableau b b1 b2 leafNode)))
+                      (* (addBranchLeftToTableau a b1 b2) *)
+  end.
+
+  Definition tableauRules 
   (t: binTree nat name data) (origT:  binTree nat name data) (statesTree : set (nat * nat)) 
   (nodeContent : nat * (((formula name data)) * bool)) 
   (state : nat) (indexQuiFormulaBox : nat) (indexQuiFormulaDiamond : nat)
+  (leafNode : nat * (((formula name data)) * bool))
   (*t: proof tree to have its rules applied*)
   (*t': original proof tree, a copy of t. Needed so we don't lose the original tree when decomposing it.*) :=
-  (*TODO : trocar a recursao desta funçao por uma busca que acha o no na arvore caso exista, e adicione apenas a formula. Aparentemente a arvore nao precisa ser
-    reconstruida*)
-  match (* (proofTree(t)) *) t with
-  | nilLeaf _ _ _ => (t, statesTree)
+  match (searchBinTreeNode t nodeContent) with
+  | None => (origT,statesTree)
+  | Some tx =>
+  match (* (proofTree(t)) *) tx with
+  | nilLeaf _ _ _ => (tx, statesTree)
   | leaf phi => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
-                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) then match (fst(snd(phi))) with
+                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(phi)))) then match (fst(snd(phi))) with
                 | proposition p => (origT, statesTree)
                 | quiFormulaBox n phi' => if negb (snd(snd(phi))) then
                                           match phi' with 
                                           | box t' pi p => match pi with
-                                                           | star pi' => ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (p , false))) 
+                                                           | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , false))) 
                                                                                              (node ((fst(phi)), (p , true)) 
-                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)))
+                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
@@ -2207,9 +2216,9 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 | quiFormulaDia n phi' => if (snd(snd(phi))) then
                                           match phi' with 
                                           | diamond t' pi p => match pi with
-                                                           | star pi' => ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (p , true))) 
+                                                           | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , true))) 
                                                                                              (node ((fst(phi)), (p , false)) 
-                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)))
+                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
@@ -2217,74 +2226,68 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           end
                                           else  (origT, statesTree)
                  | and phi1 phi2 => if (snd(snd(phi))) then
-                                    ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , false)))
-                                                                    (leaf ((fst(phi)), (phi2 , false))))
-                                                                    , ([]))
+                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data))) leafNode), (statesTree))
+                                   else ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                  (leaf ((fst(phi)), (phi2 , false))) leafNode), (statesTree))
                  | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , true)))
-                                                                    (leaf ((fst(phi)), (phi2 , true))))
-                                                                    , ([]))
-                                   else ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , false))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , true)))
+                                                                    (leaf ((fst(phi)), (phi2 , true))) leafNode), (statesTree))
+                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data))) leafNode), (statesTree)) (* ou colocar a regra do false aqui *)
                  | neg phi1 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (leaf phi) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
-                                   else ((addLeftToTableau (leaf phi) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
+                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false))) leafNode), (statesTree))
+                                   else ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , true))) leafNode), (statesTree))
                 | box t' pi p => match pi with
                                 | sProgram pi' => if (snd(snd(phi))) then
-                                                   ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), (p , true))))), (statesTree))
-                                                  else ((addLeftToTableau (leaf phi) ((leaf ((state), (p , false))))) , ([((fst(phi)), (state))]))
-                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (p , true))
-                                                 (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                   ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))) leafNode), (statesTree))
+                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , ([((fst(phi)), (state))]))
+                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true))
                                                  (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
-                                                                           (nilLeaf nat name data)))), ([]))
-                                               else ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), 
-                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                                                           (nilLeaf nat name data))) leafNode), (statesTree))
+                                               else ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true)))) leafNode), (statesTree))
                                 end
                 | diamond t' pi p => match pi with
                                      | sProgram pi' => if (snd(snd(phi))) then
-                                                      ((addLeftToTableau (leaf phi) ((leaf ((state), (p , true)))
-                                                                                    )), ([((fst(phi)), (state))]))
-                                                     else ((addLeftToTableau (leaf phi) ((leaf ((fst(phi)), (p , false)))
-                                                                                    )), ([]))
+                                                      ((addLeftToTableau (origT) ((leaf ((state), (p , true)))
+                                                                                    ) leafNode), ([((fst(phi)), (state))]))
+                                                     else ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , false)))) leafNode), (statesTree))
                                      | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
-                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
-                                                      else ((addLeftToTableau (leaf phi) ((node ((fst(phi)), (p , true))
-                                                           (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                    ((quiFormulaDia indexQuiFormulaDiamond p) , true)))) leafNode), (statesTree))
+                                                      else ((addLeftToTableau (origT) ((node ((fst(phi)), (p , false))
                                                       (leaf ((fst(phi)), (((diamond t' (sProgram pi')(diamond t' (star pi') p))) , false))) 
-                                                                                     (nilLeaf nat name data)))), ([]))
+                                                                                     (nilLeaf nat name data))) leafNode), (statesTree))
                                      end                 
                 | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau (leaf phi) (leaf ((fst(phi)), (phi1 , false)))
-                                                                    (leaf ((fst(phi)), (phi2 , false))))
-                                                                    , ([]))
-                                   else ((addBranchLeftToTableau (leaf phi) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data)), ([])) 
-                | _ => (t, statesTree)
+                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))) leafNode), (statesTree))
+                                   else ((addBranchLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data) leafNode), (statesTree)) 
+                | _ => (tx, statesTree)
                 end
-                else (t, statesTree)
+                else (tx, statesTree) 
   | node phi x y => if (equiv_decb (fst(nodeContent)) (fst(phi)))  && (equalForumla (fst(snd(nodeContent))) (fst(snd(phi))))
-                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(nodeContent)))) then match (fst(snd(phi))) with
+                           && (equiv_decb (snd(snd(nodeContent))) (snd(snd(phi)))) then match (fst(snd(phi))) with
                 | proposition p => (origT, statesTree)
                 | quiFormulaBox n phi' => if negb (snd(snd(phi))) then
                                           match phi' with 
                                           | box t' pi p => match pi with
-                                                           | star pi' => ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (p , false))) 
-                                                                                             (node ((fst(phi)), (p , true)) 
-                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)))
+                                                           | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , false))) 
+                                                                          (node ((fst(phi)), (p , true)) 
+                                                                          (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
                                           | _ => (origT, statesTree)
                                           end
-                                          else  (origT, statesTree)
+                                          else (origT, statesTree)
                 | quiFormulaDia n phi' => if (snd(snd(phi))) then
                                           match phi' with 
                                           | diamond t' pi p => match pi with
-                                                           | star pi' => ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (p , true))) 
+                                                           | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , true))) 
                                                                                              (node ((fst(phi)), (p , false)) 
-                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)))
+                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
@@ -2292,61 +2295,56 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           end
                                           else  (origT, statesTree)
                  | and phi1 phi2 => if (snd(snd(phi))) then
-                                    ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data)))), ([]))
-                                   else ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
-                                                                    (leaf ((fst(phi)), (phi2 , false))))
-                                                                    , ([]))
+                                    ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , true))) (nilLeaf nat name data))) leafNode), (statesTree))
+                                   else ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))) leafNode), (statesTree))
                  | or phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , true)))
-                                                                    (leaf ((fst(phi)), (phi2 , true))))
-                                                                    , ([]))
-                                   else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , false))  
-                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data)))), ([])) (* ou colocar a regra do false aqui *)
+                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , true)))
+                                                                    (leaf ((fst(phi)), (phi2 , true))) leafNode), (statesTree))
+                                   else ((addLeftToTableau (origT) ((node ((fst(phi)), (phi1 , false))  
+                                                               (leaf ((fst(phi)), (phi2 , false))) (nilLeaf nat name data))) leafNode), (statesTree))
                  | neg phi1 => if (snd(snd(phi))) then
-                                   ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , false)))), ([]))
-                                   else ((addLeftToTableau (node phi x y) (leaf ((fst(phi)), (((phi1)) , true)))), ([]))
+                                   ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , false))) leafNode), (statesTree))
+                                   else ((addLeftToTableau (origT) (leaf ((fst(phi)), (((phi1)) , true))) leafNode), (statesTree))
                 | box t' pi p => match pi with
                                 | sProgram pi' => if (snd(snd(phi))) then
-                                                   ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , true))))), (statesTree))
-                                                  else ((addLeftToTableau (node phi x y) ((leaf ((state), (p , false))))) , ([((fst(phi)), (state))]))
-                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true))
-                                                 (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                  ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , true)))) leafNode), (statesTree))
+                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , ([((fst(phi)), (state))]))
+                                | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true))
                                                  (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
-                                                                           (nilLeaf nat name data)))), ([]))
-                                               else ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), 
-                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
+                                                                           (nilLeaf nat name data))) leafNode), (statesTree))
+                                               else ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
+                                                    ((quiFormulaBox indexQuiFormulaBox p) , true)))) leafNode), (statesTree))
                                 end
                 | diamond t' pi p => match pi with
                                      | sProgram pi' => if (snd(snd(phi))) then
-                                                      ((addLeftToTableau (node phi x y) ((leaf ((state), (p , true)))
-                                                                                    )), ([((fst(phi)), (state))]))
-                                                     else ((addLeftToTableau (node phi x y) ((leaf ((fst(phi)), (p , false)))
-                                                                                    )), ([]))
+                                                      ((addLeftToTableau (origT) ((leaf ((state), (p , true)))) leafNode), ([((fst(phi)), (state))]))
+                                                     else ((addLeftToTableau (origT) ((leaf ((fst(phi)), (p , false)))) leafNode), (statesTree))
                                      | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
-                                                    ((quiFormulaBox indexQuiFormulaBox p) , true))))), ([]))
-                                                      else ((addLeftToTableau (node phi x y) ((node ((fst(phi)), (p , true))
-                                                           (*NOTA: talvez apliar o f(t,pi) para recuprar o t da segunda modalidade*)
+                                                    ((quiFormulaDia indexQuiFormulaDiamond p) , true)))) leafNode), (statesTree))
+                                                      else ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true))
                                                       (leaf ((fst(phi)), (((diamond t' (sProgram pi')(diamond t' (star pi') p))) , false))) 
-                                                                                     (nilLeaf nat name data)))), ([]))
+                                                                                     (nilLeaf nat name data))) leafNode), (statesTree))
                                      end                 
                 | imp phi1 phi2 => if (snd(snd(phi))) then
-                                   ((addBranchLeftToTableau (node phi x y) (leaf ((fst(phi)), (phi1 , false)))
-                                                                    (leaf ((fst(phi)), (phi2 , false))))
-                                                                    , ([]))
-                                   else ((addBranchLeftToTableau (node phi x y) ((node ((fst(phi)), (phi1 , true))  
-                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data)), ([])) 
-                | _ => (t, statesTree)
+                                   ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (phi1 , false)))
+                                                                    (leaf ((fst(phi)), (phi2 , false))) leafNode), (statesTree))
+                                   else ((addBranchLeftToTableau (origT) ((node ((fst(phi)), (phi1 , true))  
+                                                               (leaf ((fst(phi)), (phi2 , false)))) (nilLeaf nat name data)) (nilLeaf nat name data) leafNode), (statesTree)) 
+                | _ => (tx, statesTree)
                 end
+                else (tx, statesTree)
+    end
                 (*Not in the actual node: keep searching in both left and right nodes of the current level o t*)
-                else ((node phi (fst(tableauRules x origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
-                               (fst(tableauRules y origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))), statesTree)
+                (*else ((node phi (fst(tableauRules x origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
+                               (fst(tableauRules y origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))), statesTree) *)
   end. 
 
   Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) 
-    (state : nat)  (indexQuiFormulaBox : nat) (indexQuiFormulaDiamond : nat):=
-    (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
-              (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))). 
+    (state : nat)  (indexQuiFormulaBox : nat) (indexQuiFormulaDiamond : nat) (leafNode : nat * (((formula name data)) * bool)) :=
+    (mkTableau (fst(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond leafNode)) 
+              (snd(tableauRules (proofTree(t)) (proofTree(t)) (statesTree(t)) nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond leafNode))). 
 
   (*We also provide functionalities to check whether a Tableau is closed *)
 
@@ -2366,14 +2364,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
     | node phi a b => if searchBinTree a nodeContent 
                       then (node phi (getBranch a nodeContent) (nilLeaf nat name data))
                       else getBranch b nodeContent
-  end.
-
-  (*checks whether two formulae are contradictory*)
-  (*ERICK: precisa checar o valor da formula no estado*)
-  Definition areFormulasContradictory (f1: (formula name data)) (f2: (formula name data)) :=
-  match f1, f2 with
-  | neg phi, phi' | phi, neg phi' => equiv_decb (phi) (phi')
-  | _, _ => false
   end.
 
   (*Given a formula of a leaf node, checks whether there is a contradiction on a branch.*)
@@ -2397,7 +2387,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
 
     (*  Ideia: para qqr phi, achar um neg phi
             se phi for um qui, tem que ver se existe um estado já visitado que seja cópia do atual, seguindo as condições definidas.*)
-  
 
   End TableauFunc.
 (*   End ReoLogicCoq. *)
