@@ -271,7 +271,7 @@ Definition formulaApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) (form
                 (sProgram
                    (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
                 (or (proposition (dataInPorts A 1))
-                   (proposition (dataInPorts B 1))), false)) 1 0 0 
+                   (proposition (dataInPorts B 1))), false)) 1 0 0 0 
 
 (0,
              (box [dataPorts A 0]
@@ -289,7 +289,7 @@ Definition formulaCompApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
             (formulaApp1) 
                (1,
                 (or (proposition (dataInPorts A 1))
-                   (proposition (dataInPorts B 1)), false)) 1 0 0
+                   (proposition (dataInPorts B 1)), false)) 1 0 0 0
                (1,
                 (or (proposition (dataInPorts A 1))
                    (proposition (dataInPorts B 1)), false)).
@@ -305,7 +305,7 @@ Eval compute in test2.
 Eval compute in applyRule (formula_eqDec Hfil portsEq nat_eqDec) (test2)
 (0,
              (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-             false)) 0 0 0 (0,
+             false)) 0 0 0 0 (0,
              (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
              false)).
 
@@ -320,7 +320,7 @@ Definition testNoBoxAppRule := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
 (0,
              (imp
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))
-                (proposition (dataInPorts B 1)), false)) 0 0 0
+                (proposition (dataInPorts B 1)), false)) 0 0 0 0
 (0,
              (imp
                 (or (proposition (dataInPorts A 1))
@@ -334,7 +334,7 @@ Definition testNoBoxAppRule2 := applyRule (formula_eqDec Hfil portsEq nat_eqDec)
 testNoBoxAppRule
 (0,
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)),
-                true)) 0 0 0
+                true)) 0 0 0 0
 
 (0, (proposition (dataInPorts B 1), false)).
 
@@ -355,7 +355,7 @@ formula1Star
              (diamond [dataPorts A 0]
                 (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
                 (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-             false)) 0 0 0
+             false)) 0 0 0 0
 
 (0,
              (diamond [dataPorts A 0]
@@ -383,7 +383,7 @@ formula2Star (0,
                 (diamond [dataPorts A 0]
                    (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
                    (or (proposition (dataInPorts A 1))
-                      (proposition (dataInPorts B 1)))), false)) 0 0 0
+                      (proposition (dataInPorts B 1)))), false)) 0 0 0 0
 (0,
              (imp
                 (diamond [dataPorts A 0]
@@ -402,7 +402,7 @@ formula2StarAppRule (0,
                 (diamond [dataPorts A 0]
                    (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
                    (or (proposition (dataInPorts A 1))
-                      (proposition (dataInPorts B 1))), true)) 0 0 0
+                      (proposition (dataInPorts B 1))), true)) 0 0 0 0
  (0,
                    (diamond [dataPorts A 0]
                       (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
@@ -428,22 +428,150 @@ Eval compute in checkContradictoryBranch (formula_eqDec Hfil portsEq nat_eqDec)
              (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
           false))).
 
-Eval compute in checkContradictoryBranch (formula_eqDec Hfil portsEq nat_eqDec)(node
-            (0,
-            (diamond [dataPorts A 0]
-               (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
-               (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-            true))
-            (leaf
-               (0,
-               (diamond [dataPorts A 0]
-                  (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
-                  (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-               false))) (nilLeaf nat ports nat))
+Definition adsa := checkCopyState (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) [0]
+(getFormulae (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) 0).
+
+Eval compute in adsa.
+
+Definition adsa2 := getFormulae (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) 0.
+
+Eval compute in adsa2.
+
+
+(*Tableau proof tests*)
+
+Definition axiomKTableau :=
+
+(imp ((box [] (sProgram (reoProg [flowLossySync nat A B] []))
+              (imp (proposition (dataInPorts A 1)) 
+                   (proposition (dataInPorts B 1)))))
+
+     (imp ((box [] (sProgram (reoProg [flowLossySync nat A B] [])))
+          (proposition (dataInPorts A 1)))
+          ((box [] (sProgram (reoProg [flowLossySync nat A B] [])))
+          (proposition (dataInPorts B 1))))).
+
+Definition formula2TableauK := formula2Tableau axiomKTableau.
+
+Eval compute in formula2TableauK.
+
+(*Rule application 1*)
+Definition formula2TableauKApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauK
+ (0,
+             (imp
+                (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                   (imp (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1))))
+                (imp
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts A 1)))
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts B 1)))), false)) 0 0 0 0
 
 (0,
-               (diamond [dataPorts A 0]
-                  (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
-                  (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-               false)).
+             (imp
+                (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                   (imp (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1))))
+                (imp
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts A 1)))
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts B 1)))), false)).
+
+Eval compute in formula2TableauKApp1.
+(*Rule Application 2*)
+
+Definition formula2TableauKApp2 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauKApp1
+  (0,
+                   (imp
+                      (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                         (proposition (dataInPorts A 1)))
+                      (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                         (proposition (dataInPorts B 1))), false)) 0 0 0 0
+(0,
+                   (imp
+                      (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                         (proposition (dataInPorts A 1)))
+                      (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                         (proposition (dataInPorts B 1))), false)).
+
+Eval compute in formula2TableauKApp2.
+
+(*Rule application 3*)
+
+Definition formula2TableauKApp3 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauKApp2
+  (0,
+                         (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                            (proposition (dataInPorts B 1)), false)) 1 0 0 0
+  (0,
+                         (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                            (proposition (dataInPorts B 1)), false)).
+
+Eval compute in formula2TableauKApp3.
+
+(*Rule appliaction 4*)
+
+Definition formula2TableauKApp4 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauKApp3
+  (0,
+                (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                   (imp (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1))), true)) 1 1 0 0
+
+
+  (1, (proposition (dataInPorts B 1), false)).
+
+Eval compute in formula2TableauKApp4.
+
+(*Rule application 5*)
+
+Definition formula2TableauKApp5 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauKApp4
+  (1,
+                               (imp (proposition (dataInPorts A 1))
+                                  (proposition (dataInPorts B 1)), true)) 1 1 0 0
+
+
+  (1,
+                               (imp (proposition (dataInPorts A 1))
+                                  (proposition (dataInPorts B 1)), true)).
+
+Eval compute in formula2TableauKApp5.
+
+Definition formula2TableauKApp6 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauKApp5
+  (0,
+                      (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                         (proposition (dataInPorts A 1)), true)) 1 1 0 0
+
+
+  (1, (proposition (dataInPorts A 1), false)).
+
+Eval compute in formula2TableauKApp6.
+
+(*Check whether the tableau is closed *)
+
+Eval compute in isTableauClosed (formula_eqDec Hfil portsEq nat_eqDec) 
+  (proofTree(formula2TableauKApp6)). 
+
+
+Definition axiomIndTableau' := 
+  (imp (and (proposition (dataInPorts A 1))
+       ((box [dataPorts A 0]
+             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                (imp (proposition (dataInPorts A 1)) 
+                      (box [dataPorts A 0]
+             (sProgram (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                (proposition(dataInPorts A 1)) )))))
+      ((box [dataPorts A 0]
+             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
+                (proposition (dataInPorts A 1))))).
+
+Definition axiomIndTableau := formula2Tableau axiomIndTableau'.
+
+
 
