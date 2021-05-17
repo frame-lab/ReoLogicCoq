@@ -217,11 +217,83 @@ Definition SequencerProgram := [flowFifo nat D E; flowSync nat E A; flowFifo nat
 flowSync nat F B; flowFifo nat F G; flowSync nat G C; flowSync nat G D].
 
 
+(* experimental *)
+Definition sequencerLambda (s: statesSequencer) (port: ports) : QArith_base.Q := 1.
+
+(* We define \delta \colon S \to T as follows.*)
+Definition deltaSequencer (s:statesSequencer) :=
+  match s with
+  | DA => [dataPorts A 0;dataPorts A 1]
+  | DB => [dataPorts B 0;dataPorts B 1]
+  | DC => [dataPorts C 0;dataPorts C 1]
+  | DD => [dataPorts D 0;dataPorts D 1]
+  | DE => [dataPorts E 0;dataPorts E 1]
+  | DF => [dataPorts F 0;dataPorts F 1]
+  | DG => [dataPorts G 0;dataPorts G 1]
+  | D_EFIFOF => [fifoData E 0 F; fifoData E 1 F]
+  | D_FFIFOG => [fifoData F 0 G; fifoData F 1 G]
+  | D_DFIFOE => [fifoData D 0 E; fifoData D 1 E]
+  end.
+
+Definition sequencerFrame := mkframe [DA;DB;DC;DD;DE;DF;DG;D_DFIFOE;D_EFIFOF;D_FFIFOG] 
+                    [(DD,D_DFIFOE);(D_DFIFOE,DE);(DE,DA);(DE,D_EFIFOF);(D_EFIFOF,DF);(DF,DB);(DF,D_FFIFOG);
+                      (D_FFIFOG,DG);(DG,DC);(DG,DD)] sequencerLambda deltaSequencer.
+
+
+(* Idea  - map a natural number to a proposition. Then, our valuation function state -> set nat
+  tells us which propositions are valid in a state. This is entirely controlled by the user's model. *)
+
+(* Definition sequencerPropositions (n: nat) : Prop :=
+  match n with
+  | 1 => dataInPort (dataPorts A 0) n
+  | 2 => dataInPort (dataPorts B 0) n
+  | 3 => dataInPort (dataPorts C 0) n
+  | 4 => dataInPort (dataPorts D 0) n
+  | _ => False
+  end. *)
+
+
+Definition getPropositionSequencer (s: statesSequencer) :=
+  match s with
+  | DA => [dataInPorts A 0; dataInPorts A 1]
+  | DB => [dataInPorts B 0; dataInPorts B 1]
+  | DC => [dataInPorts C 0; dataInPorts C 1]
+  | DD => [dataInPorts D 0; dataInPorts D 1]
+  | DE => [] 
+  | DF => []
+  | DG => []
+  | D_EFIFOF => []
+  | D_FFIFOG => []
+  | D_DFIFOE => [] 
+  end.
+
+Definition sequencerValuation (s: statesSequencer) (p : (dataProp ports nat)) := 
+  existsb (fun x : (dataProp ports nat) => equiv_decb p x) (getPropositionSequencer s).
+
+Definition sequencerModel := mkmodel sequencerFrame sequencerValuation.
+
 Definition pi := sProgram (reoProg SequencerProgram []).
 
 Definition piStar' := star (reoProg SequencerProgram []).
 
 Definition t := [dataPorts D 1].
+
+Eval compute in singleFormulaVerify sequencerModel
+(box t pi (proposition (dataInPorts B 1))) t.
+
+(* Example 1 *)
+
+Eval compute in singleFormulaVerify sequencerModel
+      (box t pi 
+        (((neg ((and (and (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))
+           (proposition (dataInPorts C 1)))))))) t.
+
+(* Example 2 *)
+Eval compute in singleFormulaVerify sequencerModel
+      (imp 
+          (box t piStar' (proposition (dataInPorts D 1)))
+           (box t piStar' (proposition (dataInPorts C 1))))  t.
+
 
 (*Example 1 - TABLEAUX 2021*)
 

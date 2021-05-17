@@ -1,8 +1,6 @@
 Require Import LogicMain.
 Import ListNotations.
 
-Close Scope Q_scope.
-
 Obligation Tactic := congruence.
 
 Inductive ports := A | B | C | D | E | F | G.
@@ -61,7 +59,7 @@ Program Instance portsEq : EqDec ports eq :=
 		| G,F => in_right 
 		end 
 	}.
-
+ 
 Inductive statesLossyFifo := D_A | D_B | D_C | D_BFIFOC.
 
 Program Instance statesLossyFifoEqDec : EqDec statesLossyFifo eq := 
@@ -86,6 +84,7 @@ Program Instance statesLossyFifoEqDec : EqDec statesLossyFifo eq :=
 
 		end 
 	}.
+
 
 Inductive statesSequencer := DA | DB | DC | DD | DE | DF | DG | D_DFIFOE | D_EFIFOF | D_FFIFOG.
 
@@ -195,58 +194,104 @@ Program Instance statesEqDec : EqDec statesSequencer eq :=
 		end 
 	}.
 
-Definition nonDetProg := [flowSync nat E A; flowSync nat B A ; flowFifo nat A C; flowSync nat A D].
+Close Scope Q_scope.
+(* LossyFIFO - simplified *)
 
-Definition t := [[dataPorts E 1; dataPorts B 0]].
-
-Definition pi := sProgram (reoProg nonDetProg []).
-
-Check f.
-
-Definition step1 := f t (program2SimpProgram (reoProg nonDetProg [])).
-
-Eval compute in step1.
-
-Definition step2 := f (step1) (program2SimpProgram (reoProg nonDetProg [])).
-
-Eval compute in step2.
-
-Definition t' := [[dataPorts A 0];[dataPorts A 1]].
-
-Definition stepa := f (t') (program2SimpProgram (reoProg nonDetProg [])).
-
-Eval compute in stepa.
-
-(*Tests with this model*)
-
-Definition N := [A;B;C;D;E].
-
-Definition model1 := getModel' (emptyModel ports nat nat) [A;B;C;D;E] t (1) 
-            (box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))) 
-            (getNewIndexesForStates t [] 0) 
-            (mkcalcProps [] 0).
-
-Eval compute in model1.
-
-Definition model1Test := getSetVisitedStates (emptyModel ports nat nat) [A;B;C;D;E] t (length (getNewIndexesForStates t [] 0)) 
-            (box [] pi(box [] pi(box [] pi(box [] pi (proposition (dataInPorts E 1))))))
-            (getNewIndexesForStates t [] 0) 
-            (mkcalcProps [] 0).
-
-Eval compute in model1Test.
+Definition lossyFifoProgram := [flowLossySync nat A B; flowFifo nat B C].
 
 
-(*Halt tests *)
 
-Definition flowtestHalt := [flowSync nat B C; flowFifo nat A C].
-Definition blockTestHalt := [flowaSyncdrain A B].
+Definition deltaLossyFifo (s: statesLossyFifo) :=
+  match s with
+  | D_A => [dataPorts A 0;dataPorts A 1]
+  | D_B => [dataPorts B 0;dataPorts B 1]
+  | D_C => [dataPorts C 0;dataPorts C 1]
+  | D_BFIFOC => [fifoData B 0 C; fifoData B 1 C]
+  end.
 
-Definition t2 : list (dataConnector ports nat) := [dataPorts A 0].
 
-Definition nPi := parse (program2SimpProgram (reoProg flowtestHalt blockTestHalt)) [].
 
-Eval compute in nPi.
+(* experimental *)
+Definition lambdaTest (s: statesLossyFifo) (port: ports) : QArith_base.Q := 1.
 
-Eval compute in f [t2] (program2SimpProgram (reoProg flowtestHalt blockTestHalt)).
+Definition lossyFifoFrame := mkframe [D_A; D_B; D_C; D_BFIFOC]
+                             [(D_A,D_B); (D_B,D_BFIFOC); (D_BFIFOC, D_C)]
+                             lambdaTest deltaLossyFifo.
+
+Check lossyFifoFrame.
+
+Definition getPropositionLossy (s: statesLossyFifo) :=
+  match s with
+  | D_A => [dataInPorts A 1; dataInPorts A 0]
+  | D_B => [dataInPorts B 1; dataInPorts B 0]
+  | D_BFIFOC => [dataInFifo A 1 B; dataInFifo A 0 B]
+  | D_C => [dataInPorts B 1; dataInPorts C 0]
+  end.
+
+
+Program Instance dataProp_eqdec2 {name data : Type} `{EqDec name eq} `{EqDec data eq} : EqDec (dataProp name data) eq :=
+    {
+      equiv_dec x y :=
+        match x, y with
+          | dataInPorts a x, dataInPorts b y => if a == b then if x == y then in_left else in_right else in_right
+          | dataInFifo a x b, dataInFifo c y d => if a == c then if b == d then if x == y then in_left else in_right else in_right else in_right
+          | dataBothPorts _ a b, dataBothPorts _ c d => if a == c then if b == d then in_left else in_right else in_right
+          | dataInPorts a x , dataInFifo b y c => in_right
+          | dataInPorts a x , dataBothPorts _ b y => in_right
+          | dataInFifo a x b , dataInPorts c y => in_right
+          | dataInFifo a x b , dataBothPorts _ c y => in_right
+          | dataBothPorts _ a b , dataInPorts c y => in_right
+          | dataBothPorts _ a b , dataInFifo c y d  => in_right
+        end
+     }.
+
+Eval compute in equiv_dec (dataInPorts A 1) (dataInPorts A 1).
+
+(* 
+  Eval compute in (dataProp_eqdec2 ports nat) dataInPorts A 1 == dataInPorts A 1. *)
+
+Definition valuationLossyFifo (s: statesLossyFifo) (p : dataProp ports nat) :=
+  existsb (fun x : (dataProp ports nat) => equiv_decb p x) (getPropositionLossy s).
+
+Definition lossyFifoModel := mkmodel lossyFifoFrame valuationLossyFifo.
+
+(* Example 1 - LossyFIFO*)
+
+Definition t' := [dataPorts A 0].
+
+Definition pi' := sProgram (reoProg lossyFifoProgram []).
+
+Definition piStar := star (reoProg lossyFifoProgram []).
+
+Eval compute in singleFormulaVerify lossyFifoModel
+  (box t' pi' 
+    (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1)))) t'.
+
+Eval compute in singleFormulaVerify lossyFifoModel
+  (imp 
+    ( box t' pi' (or (proposition (dataInPorts A 1)) 
+                     (proposition (dataInPorts B 1))))
+                  (neg (box t' pi' (proposition (dataInFifo B 1 C))))) t'.
+
+
+Definition lossyFifoModel2 := constructModel [A ; B ; C] [t'] 
+  (imp (proposition (dataInPorts A 0))
+    (diamond t' pi'(proposition (dataInPorts B 1)))) 0.
+
+Eval compute in lossyFifoModel2.
+
+Eval compute in singleFormulaVerify (lossyFifoModel2) 
+    (imp (proposition (dataInPorts A 0))
+    (diamond t' pi'(proposition (dataInPorts B 0)))) t'.
+
+Eval compute in getCalc (buildPropModel [A ; B ; C] (hd [] [t']) 0) 
+[A ; B ; C] [t'] 1 (box t' pi'((((((((proposition (dataInPorts A 0))))))))))
+(getNewIndexesForStates [t'] [] 0) (mkcalcProps [] 0).
+
+Definition lossyFifoModel3 := constructModel [A ; B ; C] [t'] 
+    (diamond t' piStar (proposition (dataInPorts C 0))) 6.
+
+Eval compute in singleFormulaVerify lossyFifoModel3 
+  (diamond t' piStar (proposition (dataInPorts C 0))) t'.
 
 

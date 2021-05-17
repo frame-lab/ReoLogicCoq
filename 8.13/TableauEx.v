@@ -411,35 +411,15 @@ formula2StarAppRule (0,
 
 Eval compute in formula2StarAppRule2.
 
-(*Tests to find closed tableau*)
+Variable varphi psi : formula ports nat.
 
-Eval compute in getAllLeafNodes (proofTree(formula2StarAppRule)).
+Check t'.
 
-Eval compute in getBranch (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule)) ((0,
-          (diamond [dataPorts A 0]
-             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
-             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-          false))).
+Variable t : set (dataConnector ports nat).
 
-Eval compute in checkContradictoryBranch (formula_eqDec Hfil portsEq nat_eqDec) 
-    (proofTree(formula2StarAppRule)) ((0,
-          (diamond [dataPorts A 0]
-             (star (reoProg [flowLossySync nat A B; flowFifo nat B C] []))
-             (or (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))),
-          false))).
+(*Tableau axiom proofs*)
 
-Definition adsa := checkCopyState (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) [0]
-(getFormulae (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) 0).
-
-Eval compute in adsa.
-
-Definition adsa2 := getFormulae (formula_eqDec Hfil portsEq nat_eqDec) (proofTree(formula2StarAppRule2)) 0.
-
-Eval compute in adsa2.
-
-
-(*Tableau proof tests*)
-
+(**Axiom K**)
 Definition axiomKTableau :=
 
 (imp ((box [] (sProgram (reoProg [flowLossySync nat A B] []))
@@ -558,6 +538,46 @@ Eval compute in formula2TableauKApp6.
 Eval compute in isTableauClosed (formula_eqDec Hfil portsEq nat_eqDec) 
   (proofTree(formula2TableauKApp6)). 
 
+(**Axiom And**)
+Definition axiomAndTableauLeft := 
+  (imp (and (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+            (proposition (dataInPorts A 1)))
+            (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+            (proposition (dataInPorts B 1))))
+
+        (box [] (sProgram (reoProg [flowLossySync nat A B] [])) 
+        (and (proposition (dataInPorts A 1)) (proposition (dataInPorts B 1))))).
+
+Definition formula2TableauAnd := formula2Tableau axiomAndTableauLeft.
+
+Eval compute in formula2TableauAnd.
+
+Definition formula2TableauAndApp1 := applyRule (formula_eqDec Hfil portsEq nat_eqDec) 
+  formula2TableauAnd
+  (0, (imp
+          (and
+          (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts A 1)))
+          (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts B 1))))
+          (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                   (and (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1)))), false)) 0 0 0 0
+  (0,
+             (imp
+                (and
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts A 1)))
+                   (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                      (proposition (dataInPorts B 1))))
+                (box [] (sProgram (reoProg [flowLossySync nat A B] []))
+                   (and (proposition (dataInPorts A 1))
+                      (proposition (dataInPorts B 1)))), false)).
+
+Eval compute in formula2TableauAndApp1.
+
+
+(**Axiom Ind **)
 
 Definition axiomIndTableau' := 
   (imp (and (proposition (dataInPorts A 1))

@@ -1136,12 +1136,12 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
 
   Definition diamondSatisfactionPi (m:model) (p : dataProp name data) 
     (states : set state) :=
-    if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
+    if (states == []) then false else
     existsb (fun x : state => (V(m)x p)) states.
 
   Definition boxSatisfactionPi (m:model) (p : dataProp name data) 
     (states: set state) :=
-    if (states == []) then false else (*Clausula adicionada p sequencia de estados não encontrada por Nu.Pi, por exemplo *)
+    if (states == []) then false else
     forallb (fun x : state => (V(m)x p)) states.
 
   Notation "x |> f" := (f x) (at level 79, no associativity).
@@ -2332,9 +2332,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 end
                 else (tx, statesTree)
     end
-                (*Not in the actual node: keep searching in both left and right nodes of the current level o t*)
-                (*else ((node phi (fst(tableauRules x origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond)) 
-                               (fst(tableauRules y origT statesTree nodeContent state indexQuiFormulaBox indexQuiFormulaDiamond))), statesTree) *)
   end. 
 
   Definition applyRule (t: tableau nat name data) (nodeContent : nat * (((formula name data)) * bool)) 
