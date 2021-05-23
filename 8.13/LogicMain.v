@@ -153,7 +153,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
   Inductive goMarks :=
     | goTo : name -> name -> goMarks
     | goFifo : name -> data -> name -> goMarks  (*enters fifo: axb*)
-    | goFromFifo : name -> data -> name -> goMarks (*leaves fifo : axb->b --- preciso guardar essas referências?*)
+    | goFromFifo : name -> data -> name -> goMarks (*leaves fifo : axb->b *)
     | goTransform : (data -> data) -> name -> name -> goMarks
     | goFilter : (data -> bool) -> name -> name -> goMarks.
  
@@ -387,10 +387,10 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
               | sync a b => (parse(t) (s ++ [to a b]))
               | lossySync a b => (parse(t) (s ++ [asyncTo a b]))
               | fifo a b => (parse t s) ++ [fifoAlt a b]
-              | syncDrain a b => (parse(t) ([(SBlock a b)] ++ s))
-              | asyncDrain a b => (parse(t) [(ABlock a b)] ++ s)
-              | filterReo f a b => (parse(t) ([filterTo f a b] ++ s )) 
-              | transform f a b => (parse(t) ([transformTo f a b] ++ s ))
+              | syncDrain a b => [(SBlock a b)] ++ (parse t s)
+              | asyncDrain a b => [(ABlock a b)] ++ (parse t s)
+              | filterReo f a b => (parse(t) (s ++ [filterTo f a b]  )) 
+              | transform f a b => (parse(t) (s ++ [transformTo f a b]))
               | merger a b c => (parse(t) (s ++ [(to a c); (to b c)])) (* s ++ [(mer a b c)] *)
               | replicator a b c => (parse(t) (s ++ [(to a b); (to a c)])) (*s ++ [(rep a b c)]*)
               end
@@ -535,7 +535,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
                                         | dataPorts name1 data => (equiv_decb name1 a)
                                         | _ => false
                                         end) (t)) then 
-                                            match (port2portFil f (goTo a b)(filter(fun x : (dataConnector) => match x with
+                                            match (port2portFil f (goFilter f a b)(filter(fun x : (dataConnector) => match x with
                                             | dataPorts name1 data => (equiv_decb name1 a)
                                             | _ => false 
                                             end) (t))) with
@@ -1996,16 +1996,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           phi (setStates) 
                                           (*calc begin*) 
                                           (calc)
-                                          (*calc end*) upperBound) (* match upperBound with
-                                      | 0 => m
-                                      | Datatypes.S k => if singleModelStep (getModel m n t index (p) setStates calc k) (p)
-                                                        (*Retrieve the state denoted by T in the model
-                                                          Próximo passo, considerar que pode ter mais de um estado aqui...*) 
-                                                        (getOrigin (hd [] t) setStates) then
-                                                      (* singleModelStep *) 
-                                                      (getModel m n t index (p) setStates calc k) else 
-                                                      (getModel m n t index (box t' (sProgram pi') p)) setStates calc k
-                                      end *)
+                                          (*calc end*) upperBound) 
                         end
 
     (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well -not required as they
@@ -2097,7 +2088,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   (*A Tableau for Relo is defined as a Coq record containing the proof tree and the sequence of states it "visits"*)
   Record tableau := mkTableau {
     proofTree : binTree;
-    statesTree : set (state * state)  (*Transformar em arvore*)
+    statesTree : set (state * state) 
   }.
 
   End TableauDef.
@@ -2202,7 +2193,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           | box t' pi p => match pi with
                                                            | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , false))) 
                                                                                              (node ((fst(phi)), (p , true)) 
-                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)) leafNode)
+                                                                                             (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , false))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
@@ -2214,7 +2205,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           | diamond t' pi p => match pi with
                                                            | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , true))) 
                                                                                              (node ((fst(phi)), (p , false)) 
-                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaBox indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)) leafNode)
+                                                                                             (leaf ((fst(phi)), ((diamond t' pi) (quiFormulaDia indexQuiFormulaDiamond phi') , true))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
@@ -2271,7 +2262,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           | box t' pi p => match pi with
                                                            | star pi' => ((addBranchLeftToTableau (origT) (leaf ((fst(phi)), (p , false))) 
                                                                           (node ((fst(phi)), (p , true)) 
-                                                                          (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , true))) (nilLeaf nat name data)) leafNode)
+                                                                          (leaf ((fst(phi)), ((box t' pi) (quiFormulaBox indexQuiFormulaBox phi') , false))) (nilLeaf nat name data)) leafNode)
                                                                     , (statesTree))
                                                            | sProgram pi' => (origT, statesTree)
                                                            end
