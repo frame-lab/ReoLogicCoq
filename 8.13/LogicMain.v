@@ -1148,6 +1148,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
 
 
   Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
+    (* if (retrieveRelatedStatesFromV (R(Fr(m))) s) == [] then false else *)
     match formula with
     | quiFormulaDia x phi | quiFormulaBox x phi => false
     | proposition p => (V(m) s p)
@@ -1418,7 +1419,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
     ->  (singleModelStep m phi s) = true.
   Proof.
   intros. destruct H3. rewrite H3. simpl. exact H4.
-  Defined.
+  Defined. 
 
   (* The evaluation of formulas is done as follows *)
 
@@ -1777,7 +1778,11 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (fst(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           (index) ))))
                                           (*index end*)
-                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index)))
+                                          (*calc begin*) 
+                                          (snd(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index)))))
+                                          (*calc end*)
                         | star pi' => getModel' (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
@@ -1786,7 +1791,11 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (fst(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           (index) ))))
                                           (*index end*)
-                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
+                                          p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index)))
+                                          (*calc begin*) 
+                                          (snd(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
+                                          (index)))))
+                                          (*calc end*)
                         end
     | box t' pi p => match pi with 
                         | sProgram pi' => getModel' (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
@@ -1801,7 +1810,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (*calc begin*) 
                                           (snd(snd(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           (index)))))
-                                          (*calc end*) 
+                                          (*calc end*)
                         | star pi' => getModel' (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
                                           ((*calculateAmountNewStates (getNewIndexesForStates t setStates index*) index) )) 
                                           n 
@@ -1898,7 +1907,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                                         (getOrigin (hd [] t) setStates) then
                                                       (* singleModelStep *) 
                                                       ((getModel' m n t index (phi) setStates calc),(setStates,upperBound)) else 
-                                                      expandStarFormulas m n t index (box t' (sProgram pi') phi) setStates calc k
+                                                      expandStarFormulas (getModel' m n t index (phi) setStates calc) n t index (box t' (sProgram pi') phi) setStates calc k
                                         | star pi' => if singleModelStep (getModel' m n t index (p) setStates calc) 
                                                         (p)
                                                         (*Retrieve the state denoted by T in the model
@@ -1906,7 +1915,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                                         (getOrigin (hd [] t) setStates) then
                                                       (* singleModelStep *) 
                                                       ((getModel' m n t index (p) setStates calc),(setStates,upperBound)) else 
-                                                      expandStarFormulas m n t index (box t' (sProgram pi') p) setStates calc k
+                                                      expandStarFormulas (getModel' m n t index (phi) setStates calc) n t index (box t' (sProgram pi') p) setStates calc k
                                          end
                        | diamond t' pi p => match pi with
                                         | sProgram pi' => 
@@ -1920,14 +1929,14 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                                       (* singleModelStep *) 
                                                       ((getModel' m n t index (phi) setStates calc),(setStates,upperBound)) else 
                                                       expandStarFormulas m n t index (diamond t' (sProgram pi') phi) setStates calc k
-                                        | star pi' => if singleModelStep (getModel' m n t index (p) setStates calc) 
+                                        | star pi' => if singleModelStep (getModel' (getModel' m n t index (phi) setStates calc) n t index (p) setStates calc) 
                                                         (p)
                                                         (*Retrieve the state denoted by T in the model
                                                           Próximo passo, considerar que pode ter mais de um estado aqui...*) 
                                                         (getOrigin (hd [] t) setStates) then
                                                       (* singleModelStep *) 
                                                       ((getModel' m n t index (p) setStates calc),(setStates,upperBound)) else 
-                                                      expandStarFormulas m n t index (diamond t' (sProgram pi') p) setStates calc k
+                                                      expandStarFormulas (getModel' m n t index (phi) setStates calc) n t index (diamond t' (sProgram pi') p) setStates calc k
                                          end
                        (*Acho que cláusula abaixo tem qhe chamar a getModel', ou atualizar isso na getModel.*)
                        | _ => ( m, (setStates, 0))
@@ -1971,7 +1980,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           phi (setStates) 
                                           (*calc begin*) 
                                           (calc)
-                                          (*calc end*) upperBound)
+                                          (*calc end*) upperBound) 
                         end
     | box t' pi p => match pi with 
                         | sProgram pi' => getModel (fst(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi'
@@ -2228,7 +2237,8 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 | box t' pi p => match pi with
                                 | sProgram pi' => if (snd(snd(phi))) then
                                                    ((addLeftToTableau (origT) ((leaf ((destState), (p , true)))) leafNode), (statesTree))
-                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , ([((fst(phi)), (state))]))
+                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , 
+                                                        (set_add equiv_dec ((fst(phi)), (state)) statesTree ))
                                 | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true))
                                                  (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
                                                                            (nilLeaf nat name data))) leafNode), (statesTree))
@@ -2237,8 +2247,8 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                 end
                 | diamond t' pi p => match pi with
                                      | sProgram pi' => if (snd(snd(phi))) then
-                                                      ((addLeftToTableau (origT) ((leaf ((state), (p , true)))
-                                                                                    ) leafNode), ([((fst(phi)), (state))]))
+                                                       ((addLeftToTableau (origT) ((leaf ((state), (p , true)))) leafNode), 
+                                                       (set_add equiv_dec ((fst(phi)), (state)) statesTree))
                                                      else ((addLeftToTableau (origT) ((leaf ((destState), (p , false)))) leafNode), (statesTree))
                                      | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
                                                     ((quiFormulaDia indexQuiFormulaDiamond p) , true)))) leafNode), (statesTree))
@@ -2297,7 +2307,8 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                 | box t' pi p => match pi with
                                 | sProgram pi' => if (snd(snd(phi))) then
                                                   ((addLeftToTableau (origT) ((leaf ((destState), (p , true)))) leafNode), (statesTree))
-                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , ([((fst(phi)), (state))]))
+                                                  else ((addLeftToTableau (origT) ((leaf ((state), (p , false)))) leafNode) , 
+                                                       (set_add equiv_dec ((fst(phi)), (state)) statesTree))
                                 | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((node ((fst(phi)), (p , true))
                                                  (leaf ((fst(phi)), (((box t' (sProgram pi')(box t' (star pi') p))) , true))) 
                                                                            (nilLeaf nat name data))) leafNode), (statesTree))
@@ -2306,7 +2317,8 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                 end
                 | diamond t' pi p => match pi with
                                      | sProgram pi' => if (snd(snd(phi))) then
-                                                      ((addLeftToTableau (origT) ((leaf ((state), (p , true)))) leafNode), ([((fst(phi)), (state))]))
+                                                       ((addLeftToTableau (origT) ((leaf ((state), (p , true)))) leafNode), 
+                                                       (set_add equiv_dec ((fst(phi)), (state)) statesTree))
                                                      else ((addLeftToTableau (origT) ((leaf ((destState), (p , false)))) leafNode), (statesTree))
                                      | star pi' => if (snd(snd(phi))) then ((addLeftToTableau (origT) ((leaf ((fst(phi)), 
                                                     ((quiFormulaDia indexQuiFormulaDiamond p) , true)))) leafNode), (statesTree))
