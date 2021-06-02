@@ -169,7 +169,7 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     | dataInFifo : name -> data -> name -> dataProp name data
     | dataInPorts : name -> data -> dataProp name data
     | dataBothPorts : name -> name -> dataProp name data.
-  (*Qui formuale needs to keep track also of the formulae they are rewriting*)
+  (*Qui formuale needs to keep track also of the formulae they are rewriting - moved to formula inductive type*)
 (*     | quiFormulaBox : nat -> (dataProp name data) -> dataProp name data
     | quiFormulaDia : nat -> (dataProp name data) -> dataProp name data. *)
 
@@ -705,8 +705,6 @@ Program Instance connectorEqDec {name} `(eqa : EqDec name eq) : EqDec (connector
     removePortNames s' (haltAux names names s' (length s')).
 
   Fixpoint go (s: set program) (k: nat) (acc : set goMarks) (t : set dataConnector) : set (set dataConnector) := 
-    (*obs2: não estou checando se, por exemplo, (a -> b) \nsucc s). Deixarei isso a cargo de parse
-     Ou seja, acc fica livre de repetição por construção.*)
     match k with
     | 0 => fire t acc []
     | Datatypes.S n  =>  match s with
@@ -917,7 +915,6 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
   | biImpl : formula -> formula -> formula
   | quiFormulaBox : nat -> formula -> formula
   | quiFormulaDia : nat -> formula -> formula.
-  (*02/03 - BNF sintática parece ok. notação do diamond tá bugada *)
 
   Program Instance formula_eqDec `(eqa: EqDec name eq) `(eqb : EqDec data eq)  : EqDec (formula) eq :=
     { equiv_dec := fix rec dc1 dc2 :=
@@ -1148,7 +1145,6 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
 
 
   Fixpoint singleModelStep (m:model) (formula : formula) (s:state) : bool :=
-    (* if (retrieveRelatedStatesFromV (R(Fr(m))) s) == [] then false else *)
     match formula with
     | quiFormulaDia x phi | quiFormulaBox x phi => false
     | proposition p => (V(m) s p)
@@ -1461,8 +1457,7 @@ Program Instance syntaticProgram_eqdec `{EqDec name eq} : EqDec syntaticProgram 
     match phi with
     | Some (and (phi') (box t (sProgram pi) (box t' (star pi') phi''))) => if (equiv_decb phi' phi'')(*&&
         (equiv_decb pi pi') then *) then
-        Some (box t (star pi') phi') else None (*ERICK: da erro se usarmos a mesma
-variavel no pattern matching em dois lugares diferentes.R: usar variaveis diferentes e forçar a ser igual.*)
+        Some (box t (star pi') phi') else None 
     | Some (box t (star pi) phi') => Some (and (phi') (box t (sProgram pi) (box t (star pi) phi')))
     | _ => None
     end.  
@@ -1730,8 +1725,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
 
   Fixpoint processIntermediateStep (m: model name nat data) (origin : nat) 
     (N: set name) (visitedStates : (set (nat * (set (dataConnector name data)))))
-    (calc : calcProps) (nextSetOfStates : set (nat * set (dataConnector name data))) 
-    (*NextSetOfStates : destino de um t normal aqui*):= 
+    (calc : calcProps) (nextSetOfStates : set (nat * set (dataConnector name data))) := 
     match nextSetOfStates with 
     | [] => (m, (visitedStates,calc))
     | currentState::moreStates => processIntermediateStep (addInfoToModel m origin (fst(currentState)) N (snd(currentState))
@@ -1835,7 +1829,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
   Fixpoint getSetVisitedStates (m: model name nat data)  (n: set name) (t: set (set (dataConnector name data))) (index:nat)
     (phi: (formula name data)) (setStates: set (nat *  (set (dataConnector name data)))) (calc : calcProps) :=
     (*setStates : set of already visited states *)
-    (*This is the new version of old "getVisitedStates"*)
     match phi with
     | proposition p => setStates
     | quiFormulaDia x phi | quiFormulaBox x phi => setStates
@@ -1883,7 +1876,6 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                           (*index end*)
                                           p (fst(snd(processGeneralStep m n setStates calc (getNewIndexesForStates t setStates index) pi' index))) calc
                         end
-    (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well.*)
     | and a b | or a b | imp a b | biImpl a b => (getSetVisitedStates (getModel' m n t index a setStates calc) n t index b setStates calc)
     | neg a => (getSetVisitedStates m n t index a setStates calc) 
     end.
@@ -1902,8 +1894,7 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                         (* This branch is only executed for box added from within expandStarFormulas *)
                                                         if singleModelStep (getModel' m n t index (phi) setStates calc) 
                                                         (phi)
-                                                        (*Retrieve the state denoted by T in the model
-                                                          TODO Próximo passo, considerar que pode ter mais de um estado aqui...*) 
+                                                        (*Retrieve the state denoted by T in the model*) 
                                                         (getOrigin (hd [] t) setStates) then
                                                       (* singleModelStep *) 
                                                       ((getModel' m n t index (phi) setStates calc),(setStates,upperBound)) else 
@@ -1923,10 +1914,8 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                         (* This branch is only executed for box added from within expandStarFormulas *)
                                                         if singleModelStep (getModel' m n t index (phi) setStates calc) 
                                                         (phi)
-                                                        (*Retrieve the state denoted by T in the model
-                                                          TODO Próximo passo, considerar que pode ter mais de um estado aqui...*) 
+                                                        (*Retrieve the state denoted by T in the model.*) 
                                                         (getOrigin (hd [] t) setStates) then
-                                                      (* singleModelStep *) 
                                                       ((getModel' m n t index (phi) setStates calc),(setStates,upperBound)) else 
                                                       expandStarFormulas m n t index (diamond t' (sProgram pi') phi) setStates calc k
                                         | star pi' => if singleModelStep (getModel' (getModel' m n t index (phi) setStates calc) n t index (p) setStates calc) 
@@ -1938,13 +1927,9 @@ variavel no pattern matching em dois lugares diferentes.R: usar variaveis difere
                                                       ((getModel' m n t index (p) setStates calc),(setStates,upperBound)) else 
                                                       expandStarFormulas (getModel' m n t index (phi) setStates calc) n t index (diamond t' (sProgram pi') p) setStates calc k
                                          end
-                       (*Acho que cláusula abaixo tem qhe chamar a getModel', ou atualizar isso na getModel.*)
                        | _ => ( m, (setStates, 0))
                        end
     end.
-
-(* OBS: incorporar expandStarFormulas dentro de getModel talvez permita a chamada dela, ao invés de getmodel'.
-  Não adianta. dá ruim *)
 
 (*We may finally define the model generator by means of the following function, which joins the search procedure *)
 
@@ -2007,9 +1992,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                                           (calc)
                                           (*calc end*) upperBound) 
                         end
-
-    (*First Calcuate the model of a, followed by the model of b. might need the set of states and calc as well -not required as they
-      have the same starting point.*)
     | and a b | or a b | imp a b | biImpl a b => (getModel (getModel m n t index a setStates calc upperBound) n t index b setStates calc) upperBound
     | neg a => (getModel m n t index a setStates calc upperBound)
     end.
@@ -2160,7 +2142,7 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
   Fixpoint addLeftToTableau (t : binTree nat name data) (t' : binTree nat name data) 
   (leafNode : nat * (((formula name data)) * bool)) : (binTree nat name data) :=
   match t with
-    | nilLeaf _ _ _ => t (*se retornar t' vai duplicar a saida na raiz também*)
+    | nilLeaf _ _ _ => t
     | leaf phi => if (equiv_decb (fst(leafNode)) (fst(phi)))  && (equalForumla (fst(snd(leafNode))) (fst(snd(phi))))
                            && (equiv_decb (snd(snd(leafNode))) (snd(snd(phi)))) 
                   then ((node phi) t' (nilLeaf _ _ _))
@@ -2179,7 +2161,6 @@ Fixpoint getModel (m: model name nat data)  (n: set name) (t: set (set (dataConn
                   then ((node phi) (b1) (b2))
                   else (leaf phi)
     | node phi a b => ((node phi) (addBranchLeftToTableau a b1 b2 leafNode) ((addBranchLeftToTableau b b1 b2 leafNode)))
-                      (* (addBranchLeftToTableau a b1 b2) *)
   end.
 
   Definition tableauRules 

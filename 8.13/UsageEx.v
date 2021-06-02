@@ -350,8 +350,6 @@ Eval compute in singleFormulaVerify sequencerModel
            (box t piStar' (proposition (dataInPorts C 1))))  t.
 
 
-(* Model checker tests *)
-
 Eval compute in buildValidPropositions [D] (0) t .
 
 Definition testModel := buildPropModel ([D]) (t) (0).
@@ -361,66 +359,54 @@ Eval compute in singleFormulaVerify
 
 Eval compute in buildValidPropositions [D] 0 t.
 
-(* Definition constructModel (n: set name) (t: set (set (dataConnector name data)))  
-    (phi: (formula name data)) :=
-    getModel' (buildPropModel n (hd [] t) 0) n t 0 phi ([(0,t)]) (mkcalcProps [] 0). *)
-
-(***new tests for model - 31/01/2021 ***)
+(***new tests for model ***)
 
 Definition N := [A; B; C; D; E; F; G].
 
 Definition calc : calcProps ports nat := (mkcalcProps [] 0).
 
-Definition grete := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition test := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
   (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))))))) 
     (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0). 
 
-Eval compute in grete.
+Eval compute in test.
 
-Definition grete' := getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition test' := getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
   (box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))))))) (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0). 
 
-Eval compute in grete'.
+Eval compute in test'.
 
-(* O length abaixo tá fudendo o plantão, que é o index. Se ele for zero, a origem fica subtraindo um *)
-Definition grete2 := getModel' (emptyModel ports nat nat) [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition test2 := getModel' (emptyModel ports nat nat) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
   ((((box t pi (proposition (dataInPorts D 1)))))) (getNewIndexesForStates [t] [] 0) 
     (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0).
 
-Eval compute in grete2.
+Eval compute in test2.
 
 Eval compute in (length (getNewIndexesForStates [t] [] 0)).
 
-Definition grete1' := getSetVisitedStates (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition test1' := getSetVisitedStates (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
   (box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))) (getNewIndexesForStates [t] [] 0) 
-    (mkcalcProps [] 0). (*Era emptyModel*)
+    (mkcalcProps [] 0). 
 
-Eval compute in grete1'.
+Eval compute in test1'.
 
-Definition gretesads' := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition testsads' := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
   (box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))) (getNewIndexesForStates [t] [] 0) 
-    (mkcalcProps [] 0) 0. (*Era emptyModel*)
+    (mkcalcProps [] 0) 0.
 
-Definition grete'' := constructModel [A ; B ; C ; D ; E ; F ; G] [t] 
+Definition test'' := constructModel [A ; B ; C ; D ; E ; F ; G] [t] 
     (box t pi(box t pi(box t pi(box t pi (proposition (dataInPorts D 1)))))) 0.
 
-Eval compute in grete''.
-
-Eval compute in gretesads'.
-
-(*21/02/2021 - Tests with composite formula*)
-(*calc não pode ser vazio - Isso leva a uma inconsistencia entre o primeiro estado visitado e o segundo.
-  Não pode ser vazio nem nas execuções normais. tem que ser como abaixo sempre;*)
 
 Eval compute in getNewValFunc (mkcalcProps [] 0)
 [A ; B ; C ; D ; E ; F ; G] [t] 0.
@@ -454,7 +440,7 @@ Definition compGrete2 := getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t
 
 Eval compute in compGrete2.
 
-(*18/02/2021 - Tests with \star*)
+(*18/02/2021 - Examples with \star*)
 
 Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
@@ -465,7 +451,6 @@ Definition star1 := expandStarFormulas (buildPropModel [A ; B ; C ; D ; E ; F ; 
 
 Eval compute in star1.
 
-(*O Trecho de código abaixo dá false pq o conjunto R é vazio para avaliação do RTC.*)
 Eval compute in singleModelStep (getModel' (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 
   [A ; B ; C ; D ; E ; F ; G] [t] 1 ((box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 
   (getNewIndexesForStates [t] [] 0) (getNewValFunc (mkcalcProps [] 0)
@@ -473,15 +458,11 @@ Eval compute in singleModelStep (getModel' (buildPropModel [A ; B ; C ; D ; E ; 
   ((box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 0.
 
 
-(*Versão atual do getmodel tá expandido cmo se fosse um pi o piStar na instrução acima. Isso vai mudar com o uso do expandStarFormulas*)
-
 Eval compute in getCalc (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) 
   [A ; B ; C ; D ; E ; F ; G] [t] 1 (box t pi(box t piStar'((((((((proposition (dataInPorts D 1))))))))))) 
   (getNewIndexesForStates [t] [] 0) (getNewValFunc (mkcalcProps [] 0)
       [A ; B ; C ; D ; E ; F ; G] [t] 0).
 
-
-(*13/03/2021* - getModel joins both behaviours in one definition *)
 
 Definition constructModeltest1 := getModel (buildPropModel [A ; B ; C ; D ; E ; F ; G] t 0) [A ; B ; C ; D ; E ; F ; G] [t] 
   (1)
